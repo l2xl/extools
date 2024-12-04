@@ -1,9 +1,17 @@
+// Scratcher project
+// Copyright (c) 2024 l2xl (l2xl/at/proton.me)
+// Distributed under the MIT software license, see the accompanying
+// file LICENSE or https://opensource.org/license/mit
+
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
 
-MainWindow::MainWindow(QWidget *parent)
+#include "bybit.hpp"
+
+MainWindow::MainWindow(std::shared_ptr<ByBitApi> marketData, QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , mMarketData(std::move(marketData))
 {
     ui->setupUi(this);
 

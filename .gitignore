@@ -72,3 +72,6 @@ CMakeLists.txt.user*
 *.dll
 *.exe
 
+build/**
+cmake-build-*/**
+.idea/**
