@@ -1,0 +1,3 @@
+[bybit]
+host=api.bybit.com
+port=443

@@ -12,18 +12,32 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(QT NAMES Qt6 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
+find_package(OpenSSL REQUIRED)
+
+SET(Boost_USE_STATIC_LIBS OFF)
+SET(Boost_USE_MULTITHREAD ON)
+find_package(Boost 1.70 REQUIRED)
+find_package(Boost 1.70 REQUIRED COMPONENTS system thread regex)
+
+
 set(PROJECT_SOURCES
-        main.cpp
-        mainwindow.cpp
-        mainwindow.h
-        mainwindow.ui
+        src/main.cpp
+        src/config.hpp
+        src/config.cpp
+        src/app/mainwindow.cpp
+        src/app/mainwindow.h
+        src/app/mainwindow.ui
+        src/app/marketwidget.cpp
+        src/app/marketwidget.h
+        src/data/bybit.cpp
+        src/data/bybit.hpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(exscratcher
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
-        marketwidget.h marketwidget.cpp
+
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET exscratcher APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
@@ -43,7 +57,19 @@ else()
     endif()
 endif()
 
+include_directories(
+        contrib
+        src
+        src/app
+        src/data
+        ${Boost_INCLUDE_DIRS}
+)
+
+link_directories(${Boost_LIBRARY_DIRS})
+
 target_link_libraries(exscratcher PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+target_link_libraries(exscratcher PRIVATE ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} ${Boost_REGEX_LIBRARY})
+target_link_libraries(exscratcher PRIVATE OpenSSL::SSL)
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
