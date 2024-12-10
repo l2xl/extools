@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
 
         auto config = std::make_shared<Config>(argc, argv);
 
-        auto mdSink = std::make_shared<ByBitApi>(config);
+        auto mdSink = std::make_shared<bybit::ByBitApi>(config);
         MainWindow w(mdSink);
         w.show();
         return a.exec();

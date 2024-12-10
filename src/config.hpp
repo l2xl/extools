@@ -18,7 +18,7 @@ class Config {
 
     std::string mDataDir;
 
-    std::string m_host;
+    std::string m_http_host;
     std::string m_port;
 
 public:
@@ -29,7 +29,7 @@ public:
     bool Trace() const {return mTrace; }
     const std::string& DataDir() const { return mDataDir; }
 
-    const std::string& Host() const { return m_host; }
+    const std::string& Host() const { return m_http_host; }
     const std::string& Port() const { return m_port; }
 };
 

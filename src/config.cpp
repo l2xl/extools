@@ -19,7 +19,7 @@ const char * const TRACE = "--debug-trace,-t";
 
 const char* const BYBIT = "bybit";
 
-const char* const HOST = "--host";
+const char* const HOST = "--http-host";
 const char* const PORT = "--port";
 }
 Config::Config(int argc, const char *const argv[])
@@ -60,7 +60,7 @@ Config::Config(int argc, const char *const argv[])
     mApp.add_flag(TRACE, mTrace, "Print debug traces to log");
 
     auto bybit = mApp.add_subcommand(BYBIT, "ByBit exchange options")->configurable()->group("Configb File Sections");
-    bybit->add_option(HOST, m_host, "ByBit exchange API host")->configurable(true);
+    bybit->add_option(HOST, m_http_host, "ByBit exchange API host")->configurable(true);
     bybit->add_option(PORT, m_port, "ByBit exchange API port")->configurable(true);
 
     try {

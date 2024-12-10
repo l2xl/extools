@@ -18,7 +18,9 @@ class MainWindow;
 }
 QT_END_NAMESPACE
 
+namespace bybit {
 class ByBitApi;
+}
 
 class MainWindow : public QMainWindow
 {
@@ -26,10 +28,10 @@ class MainWindow : public QMainWindow
 
     std::unique_ptr<MarketWidget> mMarketView;
 
-    std::shared_ptr<ByBitApi> mMarketData;
+    std::shared_ptr<bybit::ByBitApi> mMarketData;
 
 public:
-    MainWindow(std::shared_ptr<ByBitApi> marketData, QWidget *parent = nullptr);
+    MainWindow(std::shared_ptr<bybit::ByBitApi> marketData, QWidget *parent = nullptr);
     ~MainWindow() override;
 
 private:
