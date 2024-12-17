@@ -22,19 +22,23 @@ namespace bybit {
 class ByBitApi;
 }
 
+namespace scratcher {
+class AsioScheduler;
+}
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
+    std::unique_ptr<Ui::MainWindow> ui;
 
     std::unique_ptr<MarketWidget> mMarketView;
-
     std::shared_ptr<bybit::ByBitApi> mMarketData;
+    std::shared_ptr<scratcher::AsioScheduler> mScheduler;
 
 public:
-    MainWindow(std::shared_ptr<bybit::ByBitApi> marketData, QWidget *parent = nullptr);
+    MainWindow(std::shared_ptr<bybit::ByBitApi> marketData, std::shared_ptr<scratcher::AsioScheduler> scheduler, QWidget *parent = nullptr);
     ~MainWindow() override;
 
-private:
-    Ui::MainWindow *ui;
+
 };
 #endif // MAINWINDOW_H

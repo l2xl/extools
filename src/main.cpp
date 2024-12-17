@@ -6,6 +6,7 @@
 #include "mainwindow.h"
 #include "config.hpp"
 
+#include "scheduler.hpp"
 #include "bybit.hpp"
 
 #include <QApplication>
@@ -19,8 +20,10 @@ int main(int argc, char *argv[])
 
         auto config = std::make_shared<Config>(argc, argv);
 
-        auto mdSink = std::make_shared<bybit::ByBitApi>(config);
-        MainWindow w(mdSink);
+        auto scheduler = std::make_shared<scratcher::AsioScheduler>();
+
+        auto mdSink = std::make_shared<bybit::ByBitApi>(config, scheduler);
+        MainWindow w(mdSink, scheduler);
         w.show();
         return a.exec();
     }

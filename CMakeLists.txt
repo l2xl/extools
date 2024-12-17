@@ -14,7 +14,11 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
 find_package(OpenSSL REQUIRED)
 
-SET(Boost_USE_STATIC_LIBS OFF)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+
+
+set(Boost_NO_BOOST_CMAKE ON)
+SET(Boost_USE_STATIC_LIBS ON)
 SET(Boost_USE_MULTITHREAD ON)
 find_package(Boost 1.70 REQUIRED)
 find_package(Boost 1.70 REQUIRED COMPONENTS system thread regex)
@@ -31,6 +35,8 @@ set(PROJECT_SOURCES
         src/app/marketwidget.h
         src/data/bybit.cpp
         src/data/bybit.hpp
+        src/data/scheduler.cpp
+        src/data/scheduler.hpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)

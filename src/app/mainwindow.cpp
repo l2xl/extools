@@ -10,16 +10,16 @@
 
 #include <chrono>
 
-MainWindow::MainWindow(std::shared_ptr<bybit::ByBitApi> marketData, QWidget *parent)
+MainWindow::MainWindow(std::shared_ptr<bybit::ByBitApi> marketData, std::shared_ptr<scratcher::AsioScheduler> scheduler, QWidget *parent)
     : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
+    , ui(std::make_unique<Ui::MainWindow>())
     , mMarketData(std::move(marketData))
+    , mScheduler(std::move(scheduler))
 {
     ui->setupUi(this);
 
     mMarketView = std::make_unique<MarketWidget>(this);
     this->setCentralWidget(mMarketView.get());
-
 
     const static std::deque<std::array<double, 4>> sample_data {
         {75,100,50,90},
@@ -39,5 +39,4 @@ MainWindow::MainWindow(std::shared_ptr<bybit::ByBitApi> marketData, QWidget *par
 
 MainWindow::~MainWindow()
 {
-    delete ui;
 }
