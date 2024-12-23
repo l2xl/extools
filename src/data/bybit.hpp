@@ -14,6 +14,7 @@
 #include <boost/container/flat_map.hpp>
 
 
+#include <chrono>
 #include <memory>
 #include <deque>
 #include <list>
@@ -50,7 +51,7 @@ public:
 using std::chrono::seconds;
 using std::chrono::milliseconds;
 
-typedef std::chrono::utc_clock::time_point time;
+typedef std::chrono::system_clock::time_point time;
 typedef std::array<double, 4> kline_type;
 typedef std::deque<kline_type> kline_sequence_type;
 typedef kline_sequence_type::iterator kline_iterator;

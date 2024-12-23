@@ -11,8 +11,6 @@
 
 #include <QApplication>
 
-#include <boost/system.hpp>
-
 int main(int argc, char *argv[])
 {
     try {
