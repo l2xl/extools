@@ -142,7 +142,7 @@ void ByBitApi::DoPing(boost::asio::io_context& io, ssl::context& ssl, boost::asi
     req.set(boost::beast::http::field::host, m_host);
     req.prepare_payload();
 
-    auto start_time = std::chrono::system_clock::now();
+    auto start_time = std::chrono::utc_clock::now();
 
     boost::beast::http::async_write(sock, req, yield[m_status]);
     if (m_status) {
@@ -158,14 +158,14 @@ void ByBitApi::DoPing(boost::asio::io_context& io, ssl::context& ssl, boost::asi
         return;
     }
 
-    auto end_time = std::chrono::system_clock::now();
+    auto end_time = std::chrono::utc_clock::now();
     m_request_halftrip = std::chrono::duration_cast<milliseconds>(end_time - start_time) / 2;
 
     if (resp.result() == boost::beast::http::status::ok) {
         std::clog << "resp body: " << resp.body() << std::endl;
         auto resp_json = nlohmann::json::parse(resp.body().begin(), resp.body().end());
         if (resp_json["retCode"] == 0) {
-            std::chrono::system_clock::time_point server_time = std::chrono::time_point<std::chrono::system_clock>(milliseconds(resp_json["time"].get<long>()));
+            std::chrono::utc_clock::time_point server_time = std::chrono::time_point<std::chrono::utc_clock>(milliseconds(resp_json["time"].get<long>()));
             m_server_time_delta = std::chrono::duration_cast<milliseconds>(server_time - start_time + m_request_halftrip);
 
             std::clog << "server time: " << std::chrono::duration_cast<milliseconds>(server_time.time_since_epoch()).count() << std::endl;
@@ -186,7 +186,7 @@ void ByBitApi::DoPing(boost::asio::io_context& io, ssl::context& ssl, boost::asi
 void ByBitApi::DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::optional<uint32_t> tick_count,
     boost::asio::io_context& io, boost::asio::ssl::context& ssl, boost::asio::yield_context yield)
 {
-    long end = tick_count ? subscriber->end_timestamp(*tick_count) : std::chrono::duration_cast<milliseconds>((std::chrono::system_clock::now() + m_server_time_delta + m_request_halftrip).time_since_epoch()).count();
+    long end = tick_count ? subscriber->end_timestamp(*tick_count) : std::chrono::duration_cast<milliseconds>((std::chrono::utc_clock::now() + m_server_time_delta + m_request_halftrip).time_since_epoch()).count();
 
     std::clog << "start: " << subscriber->start_time << "\nend:   " << end << "\ninterval: " << subscriber->tick_seconds.count() << std::endl;
 

@@ -31,7 +31,7 @@ MainWindow::MainWindow(std::shared_ptr<bybit::ByBitApi> marketData, std::shared_
 
     mMarketView->SetMarketData(sample_data);
 
-    auto start_time = std::chrono::system_clock::now() - std::chrono::seconds(60) * 50;
+    auto start_time = std::chrono::utc_clock::now() - std::chrono::seconds(60) * 50;
 
     mMarketData->Subscribe({}, "BTCUSDC", start_time, std::chrono::seconds(60), 50);
 
