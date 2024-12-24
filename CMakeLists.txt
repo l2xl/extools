@@ -20,8 +20,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 set(Boost_NO_BOOST_CMAKE ON)
 SET(Boost_USE_STATIC_LIBS ON)
 SET(Boost_USE_MULTITHREAD ON)
-find_package(Boost 1.70 REQUIRED)
-find_package(Boost 1.70 REQUIRED COMPONENTS system thread regex)
+# find_package(Boost 1.83 REQUIRED)
+find_package(Boost 1.83 REQUIRED COMPONENTS system thread regex)
 
 
 set(PROJECT_SOURCES
