@@ -16,12 +16,7 @@ find_package(OpenSSL REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
-
-set(Boost_NO_BOOST_CMAKE ON)
-SET(Boost_USE_STATIC_LIBS ON)
-SET(Boost_USE_MULTITHREAD ON)
-# find_package(Boost 1.83 REQUIRED)
-find_package(Boost 1.83 REQUIRED COMPONENTS system thread regex)
+find_package(Boost 1.83 REQUIRED COMPONENTS context)
 
 
 set(PROJECT_SOURCES
@@ -71,10 +66,8 @@ include_directories(
         ${Boost_INCLUDE_DIRS}
 )
 
-link_directories(${Boost_LIBRARY_DIRS})
-
 target_link_libraries(exscratcher PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
-target_link_libraries(exscratcher PRIVATE ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} ${Boost_REGEX_LIBRARY})
+target_link_libraries(exscratcher PRIVATE ${Boost_LIBRARIES})
 target_link_libraries(exscratcher PRIVATE OpenSSL::SSL)
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
