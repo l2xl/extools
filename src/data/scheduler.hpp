@@ -20,7 +20,7 @@ using boost::asio::yield_context;
 
 namespace ssl = boost::asio::ssl;
 
-class AsioScheduler {
+class AsioScheduler: public std::enable_shared_from_this<AsioScheduler> {
     io_context m_io_ctx;
     ssl::context m_ssl_ctx;
     executor_work_guard<io_context::executor_type> m_io_guard;
@@ -40,8 +40,9 @@ public:
 
     void SpawnSSL(auto task)
     {
+        auto self = shared_from_this();
         boost::asio::spawn(m_io_ctx,
-            [&](yield_context yield){ task(m_io_ctx, m_ssl_ctx, std::move(yield)); },
+            [=](yield_context yield){ task(self->io(), self->ssl(), yield); },
             [](std::exception_ptr ex) { if (ex) std::rethrow_exception(ex); });
 
     }

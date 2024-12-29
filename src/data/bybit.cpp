@@ -20,7 +20,7 @@
 #include <sstream>
 #include <iostream>
 
-namespace bybit {
+namespace scratcher::bybit {
 
 namespace {
 
@@ -85,26 +85,14 @@ struct ByBitDataCache
     void FillKlines(kline_sequence_type& out, time start_time, seconds tick_duration, size_t tick_count);
 };
 
-namespace ssl = boost::asio::ssl;
 namespace ip = boost::asio::ip;
 namespace websock = boost::beast::websocket;
 
 
-ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<scratcher::AsioScheduler> scheduler)
+ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler)
     : m_host(config->Host()), m_port(config->Port())
     , mScheduler(std::move(scheduler))
 {
-    mScheduler->SpawnSSL([this](boost::asio::io_context& io, ssl::context& ssl, boost::asio::yield_context yield) {
-        ip::tcp::resolver resolver(io);
-        m_resolved_host = resolver.async_resolve(m_host, m_port, yield[m_status]);
-        if (m_status) {
-            std::cerr << m_status.message() << std::endl;
-            //TODO: repeat name resolution
-        }
-        else {
-            DoPing(io, ssl, yield[m_status]);
-        }
-    });
 
     //std::cout << "response: " << resp << std::endl;
 
@@ -119,7 +107,31 @@ ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<scratcher::As
     // m_sock_buf.clear();
 }
 
-void ByBitApi::DoPing(boost::asio::io_context& io, ssl::context& ssl, boost::asio::yield_context yield)
+std::shared_ptr<ByBitApi> ByBitApi::Create(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler)
+{
+    auto ptr = std::make_shared<ByBitApi>(config, scheduler);
+
+    scheduler->SpawnSSL([=](io_context& io, ssl::context& ssl, yield_context yield) {
+        ptr->DoResolveAndConnect(io, ssl, yield);
+    });
+
+    return ptr;
+}
+
+void ByBitApi::DoResolveAndConnect(io_context &io, ssl::context &ssl, yield_context yield)
+{
+    ip::tcp::resolver resolver(io);
+    m_resolved_host = resolver.async_resolve(m_host, m_port, yield[m_status]);
+    if (m_status) {
+        std::cerr << m_status.message() << std::endl;
+        //TODO: repeat name resolution
+    }
+    else {
+        DoPing(io, ssl, yield);
+    }
+}
+
+void ByBitApi::DoPing(io_context& io, ssl::context& ssl, yield_context yield)
 {
     boost::beast::ssl_stream<boost::beast::tcp_stream> sock(io, ssl);
 
@@ -184,7 +196,7 @@ void ByBitApi::DoPing(boost::asio::io_context& io, ssl::context& ssl, boost::asi
 }
 
 void ByBitApi::DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::optional<uint32_t> tick_count,
-    boost::asio::io_context& io, boost::asio::ssl::context& ssl, boost::asio::yield_context yield)
+    io_context& io, ssl::context& ssl, yield_context yield)
 {
     long end = tick_count ? subscriber->end_timestamp(*tick_count) : std::chrono::duration_cast<milliseconds>((std::chrono::utc_clock::now() + m_server_time_delta + m_request_halftrip).time_since_epoch()).count();
 
@@ -307,8 +319,9 @@ ByBitApi::subscriber_ref ByBitApi::Subscribe(subscriber_ref s, const std::string
     subscriber->start_time = from + m_server_time_delta;
     subscriber->tick_seconds = tick_seconds;
 
-    mScheduler->SpawnSSL([=,this](boost::asio::io_context& io, ssl::context& ssl, boost::asio::yield_context yield) {
-        DoSubscribe(std::move(subscriber), std::move(tick_count), io, ssl, yield[m_status]);
+    auto self = shared_from_this();
+    mScheduler->SpawnSSL([=](io_context& io, ssl::context& ssl, yield_context yield) {
+        self->DoSubscribe(std::move(subscriber), std::move(tick_count), io, ssl, yield);
     });
 
 
@@ -318,14 +331,14 @@ ByBitApi::subscriber_ref ByBitApi::Subscribe(subscriber_ref s, const std::string
 void ByBitApi::Unsubscribe(subscriber_ref s)
 {
     if (s.expired()) return;
-    auto subscriber = s.lock();
-    auto s_it = std::find(m_subscribers.begin(), m_subscribers.end(), subscriber);
-    if (s_it != m_subscribers.end()) m_subscribers.erase(s_it);
-
+    if (auto subscriber = s.lock()) {
+        auto s_it = std::find(m_subscribers.begin(), m_subscribers.end(), subscriber);
+        if (s_it != m_subscribers.end())
+            m_subscribers.erase(s_it);
+    }
     {
         std::unique_lock lock(m_data_cache_mutex);
-        for (auto it = m_data_cache.begin(); it != m_data_cache.end(); (it->expired() ? it = m_data_cache.erase(it) : ++it))
-        { /*do nothing*/}
+        for (auto it = m_data_cache.begin(); it != m_data_cache.end(); it->expired() ? it = m_data_cache.erase(it) : ++it) ; //do nothing
     }
 }
 

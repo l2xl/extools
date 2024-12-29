@@ -23,11 +23,7 @@
 
 class Config;
 
-namespace sceduler {
-class AsioScheduler;
-}
-
-namespace bybit {
+namespace scratcher::bybit {
 
 class SchedulerError : public std::runtime_error
 {
@@ -59,7 +55,7 @@ typedef kline_type::const_iterator const_kline_iterator;
 struct ByBitSubscriber;
 struct ByBitDataCache;
 
-class ByBitApi
+class ByBitApi: public std::enable_shared_from_this<ByBitApi>
 {
 public:
 
@@ -68,10 +64,10 @@ public:
 private:
     typedef std::list<std::weak_ptr<ByBitDataCache>> data_list_type;
 
-    std::string m_host;
-    std::string m_port;
+    const std::string m_host;
+    const std::string m_port;
 
-    std::shared_ptr<scratcher::AsioScheduler> mScheduler;
+    std::shared_ptr<AsioScheduler> mScheduler;
 
     boost::beast::error_code m_status;
     boost::asio::ip::tcp::resolver::results_type m_resolved_host;
@@ -85,11 +81,13 @@ private:
     std::mutex m_data_cache_mutex;
     data_list_type m_data_cache;
 
+    void DoResolveAndConnect(boost::asio::io_context& io, boost::asio::ssl::context& ssl, boost::asio::yield_context yield);
     void DoPing(boost::asio::io_context& io, boost::asio::ssl::context& ssl, boost::asio::yield_context yield);
     void DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::optional<uint32_t> tick_count,
         boost::asio::io_context& io, boost::asio::ssl::context& ssl, boost::asio::yield_context yield);
 public:
-    explicit ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<scratcher::AsioScheduler> scheduler);
+    explicit ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler);
+    static std::shared_ptr<ByBitApi> Create(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler);
 
     subscriber_ref Subscribe(subscriber_ref subscriber, const std::string& symbol, time from, seconds tick_seconds, std::optional<uint32_t> tick_count = {});
     void Unsubscribe(subscriber_ref subscriber);

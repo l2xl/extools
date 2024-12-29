@@ -18,11 +18,11 @@ class MainWindow;
 }
 QT_END_NAMESPACE
 
+
+namespace scratcher {
 namespace bybit {
 class ByBitApi;
 }
-
-namespace scratcher {
 class AsioScheduler;
 }
 
@@ -32,11 +32,11 @@ class MainWindow : public QMainWindow
     std::unique_ptr<Ui::MainWindow> ui;
 
     std::unique_ptr<MarketWidget> mMarketView;
-    std::shared_ptr<bybit::ByBitApi> mMarketData;
+    std::shared_ptr<scratcher::bybit::ByBitApi> mMarketData;
     std::shared_ptr<scratcher::AsioScheduler> mScheduler;
 
 public:
-    MainWindow(std::shared_ptr<bybit::ByBitApi> marketData, std::shared_ptr<scratcher::AsioScheduler> scheduler, QWidget *parent = nullptr);
+    MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketData, std::shared_ptr<scratcher::AsioScheduler> scheduler, QWidget *parent = nullptr);
     ~MainWindow() override;
 
 

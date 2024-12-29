@@ -10,7 +10,7 @@
 
 #include <chrono>
 
-MainWindow::MainWindow(std::shared_ptr<bybit::ByBitApi> marketData, std::shared_ptr<scratcher::AsioScheduler> scheduler, QWidget *parent)
+MainWindow::MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketData, std::shared_ptr<scratcher::AsioScheduler> scheduler, QWidget *parent)
     : QMainWindow(parent)
     , ui(std::make_unique<Ui::MainWindow>())
     , mMarketData(std::move(marketData))
