@@ -11,7 +11,6 @@
 #include "nlohmann/json.hpp"
 
 #include <openssl/hmac.h>
-#include <boost/beast.hpp>
 #include <boost/lexical_cast.hpp>
 
 
@@ -93,60 +92,72 @@ ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler
     : m_host(config->Host()), m_port(config->Port())
     , mScheduler(std::move(scheduler))
 {
-
-    //std::cout << "response: " << resp << std::endl;
-
-    // m_sock.handshake(m_host, REQ_TIME);
-    // if (!m_sock.is_open()) throw std::ios_base::failure("ByBit connection error");
-    //
-    //sock.read(m_sock_buf);
-    //
-    // std::clog << boost::beast::buffers_to_string(m_sock_buf.data()) << std::endl;
-    //
-    // m_sock.close(websock::close_code::none);
-    // m_sock_buf.clear();
 }
 
 std::shared_ptr<ByBitApi> ByBitApi::Create(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler)
 {
-    auto ptr = std::make_shared<ByBitApi>(config, scheduler);
+    auto self = std::make_shared<ByBitApi>(config, scheduler);
+    self->Spawn([=](yield_context yield) { self->DoResolve(yield); });
+    self->Spawn([=](yield_context yield) { self->DoPing(yield); });
 
-    scheduler->SpawnSSL([=](io_context& io, ssl::context& ssl, yield_context yield) {
-        ptr->DoResolveAndConnect(io, ssl, yield);
-    });
-
-    return ptr;
+    return self;
 }
 
-void ByBitApi::DoResolveAndConnect(io_context &io, ssl::context &ssl, yield_context yield)
+
+void ByBitApi::Spawn(std::function<void(yield_context yield)> task)
 {
-    ip::tcp::resolver resolver(io);
-    m_resolved_host = resolver.async_resolve(m_host, m_port, yield[m_status]);
-    if (m_status) {
-        std::cerr << m_status.message() << std::endl;
-        //TODO: repeat name resolution
-    }
-    else {
-        DoPing(io, ssl, yield);
+    auto self_ref = weak_from_this();
+    spawn(mScheduler->io(),
+        [=](yield_context yield) {
+            boost::system::error_code status;
+            task(yield[status]);
+            if (status) {
+                std::cerr << status.message() << std::endl;
+                status.clear();
+
+                if (auto self = self_ref.lock()) {
+
+                    boost::asio::steady_timer t(self->mScheduler->io(), milliseconds(500));
+                    t.async_wait(yield[status]);
+
+                    if (status) {
+                        std::cerr << "Repeat timer error: " << status.message() << std::endl;
+                        throw status;
+                    }
+
+                    if (auto self1 = self_ref.lock())
+                        self1->Spawn(task);
+                }
+            }
+        },
+        [](std::exception_ptr ex) { if (ex) std::rethrow_exception(ex); });
+}
+
+void ByBitApi::DoResolve(yield_context &yield)
+{
+    ip::tcp::resolver resolver(mScheduler->io());
+    m_resolved_host = resolver.async_resolve(m_host, m_port, yield);
+    if (*yield.ec_) {
+        std::cerr << "name resolutoion error";
     }
 }
 
-void ByBitApi::DoPing(io_context& io, ssl::context& ssl, yield_context yield)
+void ByBitApi::DoPing(yield_context &yield)
 {
-    boost::beast::ssl_stream<boost::beast::tcp_stream> sock(io, ssl);
+    boost::beast::ssl_stream<boost::beast::tcp_stream> sock(mScheduler->io(), mScheduler->ssl());
 
-    get_lowest_layer(sock).async_connect(m_resolved_host, yield[m_status]);
-    if (m_status) {
-        std::cerr << "connect error: " <<m_status.message() << std::endl;
+    get_lowest_layer(sock).async_connect(m_resolved_host, yield);
+    if (*yield.ec_) {
+        std::cerr << "connect error: ";
         return;
     }
 
     if (!SSL_set_tlsext_host_name(sock.native_handle(), m_host.c_str()))
         throw std::ios_base::failure( "Failed to set SNI Hostname");
 
-    sock.async_handshake(ssl::stream_base::client, yield[m_status]);
-    if (m_status) {
-        std::cerr << "handshake error: " <<m_status.message() << std::endl;
+    sock.async_handshake(ssl::stream_base::client, yield);
+    if (*yield.ec_) {
+        std::cerr << "handshake error: ";
         return;
     }
 
@@ -156,17 +167,17 @@ void ByBitApi::DoPing(io_context& io, ssl::context& ssl, yield_context yield)
 
     auto start_time = std::chrono::utc_clock::now();
 
-    boost::beast::http::async_write(sock, req, yield[m_status]);
-    if (m_status) {
-        std::cerr << "request error: " <<m_status.message() << std::endl;
+    boost::beast::http::async_write(sock, req, yield);
+    if (*yield.ec_) {
+        std::cerr << "request error: ";
         return;
     }
 
     boost::beast::flat_buffer buf;
     boost::beast::http::response<boost::beast::http::string_body> resp;
-    boost::beast::http::async_read(sock, buf, resp, yield[m_status]);
-    if (m_status) {
-        std::cerr << "read error: " <<m_status.message() << std::endl;
+    boost::beast::http::async_read(sock, buf, resp, yield);
+    if (*yield.ec_) {
+        std::cerr << "read error: ";
         return;
     }
 
@@ -186,28 +197,27 @@ void ByBitApi::DoPing(io_context& io, ssl::context& ssl, yield_context yield)
         }
         else {
             std::cerr << "bybit returned error: " << resp_json["retMsg"] << std::endl;
-            m_status.assign(resp_json["retCode"].get<int>(), bybit_error_category());
+            yield.ec_->assign(resp_json["retCode"].get<int>(), bybit_error_category());
         }
     }
     else {
         std::cerr << "http returned error: " << resp.reason() << std::endl;
-        m_status = boost::system::error_code(resp.result_int(), bybit_error_category());
+        *yield.ec_ = boost::system::error_code(resp.result_int(), bybit_error_category());
     }
 }
 
-void ByBitApi::DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::optional<uint32_t> tick_count,
-    io_context& io, ssl::context& ssl, yield_context yield)
+void ByBitApi::DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::optional<uint32_t> tick_count, yield_context &yield)
 {
     long end = tick_count ? subscriber->end_timestamp(*tick_count) : std::chrono::duration_cast<milliseconds>((std::chrono::utc_clock::now() + m_server_time_delta + m_request_halftrip).time_since_epoch()).count();
 
     std::clog << "start: " << subscriber->start_time << "\nend:   " << end << "\ninterval: " << subscriber->tick_seconds.count() << std::endl;
 
-    boost::beast::ssl_stream<boost::beast::tcp_stream> sock{ io, ssl };
+    boost::beast::ssl_stream<boost::beast::tcp_stream> sock{ mScheduler->io(), mScheduler->ssl() };
 
         //get_lowest_layer(sock).expires_after(std::chrono::seconds(10));
-    get_lowest_layer(sock).async_connect(m_resolved_host, yield[m_status]);
-    if (m_status) {
-        std::cerr << "connect error: " <<m_status.message() << std::endl;
+    get_lowest_layer(sock).async_connect(m_resolved_host, yield);
+    if (*yield.ec_) {
+        std::cerr << "connect error: ";
         return;
     }
 
@@ -215,9 +225,9 @@ void ByBitApi::DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::opt
         throw std::ios_base::failure( "Failed to set SNI Hostname");
 
     //get_lowest_layer(sock).expires_after(std::chrono::seconds(10));
-    sock.async_handshake(ssl::stream_base::client, yield[m_status]);
-    if (m_status) {
-        std::cerr << "handshake error: " <<m_status.message() << std::endl;
+    sock.async_handshake(ssl::stream_base::client, yield);
+    if (*yield.ec_) {
+        std::cerr << "handshake error: ";
         return;
     }
 
@@ -240,9 +250,9 @@ void ByBitApi::DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::opt
     req.prepare_payload();
 
     std::clog << "request: " << req << std::endl;
-    boost::beast::http::async_write(sock, req, yield[m_status]);
-    if (m_status) {
-        std::cerr << "request error: " <<m_status.message() << std::endl;
+    boost::beast::http::async_write(sock, req, yield);
+    if (*yield.ec_) {
+        std::cerr << "request error: ";
         return;
     }
 
@@ -292,7 +302,7 @@ void ByBitApi::DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::opt
     //std::thread([this]{ io_ctx.run(); });
 }
 
-ByBitApi::subscriber_ref ByBitApi::Subscribe(subscriber_ref s, const std::string& symbol, time from, seconds tick_seconds, std::optional<uint32_t> tick_count)
+ByBitApi::subscriber_ref ByBitApi::Subscribe(const subscriber_ref &s, const std::string& symbol, time from, seconds tick_seconds, std::optional<uint32_t> tick_count)
 {
     auto subscriber = s.lock();
     if (!subscriber) {
@@ -320,10 +330,7 @@ ByBitApi::subscriber_ref ByBitApi::Subscribe(subscriber_ref s, const std::string
     subscriber->tick_seconds = tick_seconds;
 
     auto self = shared_from_this();
-    mScheduler->SpawnSSL([=](io_context& io, ssl::context& ssl, yield_context yield) {
-        self->DoSubscribe(std::move(subscriber), std::move(tick_count), io, ssl, yield);
-    });
-
+    Spawn([=](yield_context yield) { self->DoSubscribe(std::move(subscriber), std::move(tick_count), yield); });
 
     return subscriber;
 }

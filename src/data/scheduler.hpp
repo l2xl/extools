@@ -27,26 +27,10 @@ class AsioScheduler: public std::enable_shared_from_this<AsioScheduler> {
     std::thread m_thread;
 public:
     AsioScheduler();
+    virtual ~AsioScheduler();
 
     io_context& io() {return m_io_ctx; }
     ssl::context& ssl() {return m_ssl_ctx; }
-
-    // void Spawn(auto task)
-    // {
-    //     boost::asio::spawn(m_io_ctx,
-    //         [&](yield_context yield){ task(m_io_ctx, std::move(yield)); },
-    //         [](std::exception_ptr ex) { if (ex) std::rethrow_exception(ex); });
-    // }
-
-    void SpawnSSL(auto task)
-    {
-        auto self = shared_from_this();
-        boost::asio::spawn(m_io_ctx,
-            [=](yield_context yield){ task(self->io(), self->ssl(), yield); },
-            [](std::exception_ptr ex) { if (ex) std::rethrow_exception(ex); });
-
-    }
-
 
 
 };

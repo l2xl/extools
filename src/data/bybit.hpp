@@ -7,11 +7,10 @@
 #define MARKET_DATA_SINK_HPP
 
 #include <boost/asio.hpp>
-#include <boost/asio/ssl.hpp>
 #include <boost/asio/spawn.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/ssl.hpp>
-#include <boost/container/flat_map.hpp>
+#include <mutex>
 
 
 #include <memory>
@@ -69,29 +68,27 @@ private:
 
     std::shared_ptr<AsioScheduler> mScheduler;
 
-    boost::beast::error_code m_status;
     boost::asio::ip::tcp::resolver::results_type m_resolved_host;
 
     milliseconds m_request_halftrip;
     milliseconds m_server_time_delta;
-
 
     std::list<std::shared_ptr<ByBitSubscriber>> m_subscribers;
 
     std::mutex m_data_cache_mutex;
     data_list_type m_data_cache;
 
-    void DoResolveAndConnect(boost::asio::io_context& io, boost::asio::ssl::context& ssl, boost::asio::yield_context yield);
-    void DoPing(boost::asio::io_context& io, boost::asio::ssl::context& ssl, boost::asio::yield_context yield);
-    void DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::optional<uint32_t> tick_count,
-        boost::asio::io_context& io, boost::asio::ssl::context& ssl, boost::asio::yield_context yield);
+    void Spawn(std::function<void(boost::asio::yield_context yield)>);
+
+    void DoResolve(boost::asio::yield_context &yield);
+    void DoPing(boost::asio::yield_context &yield);
+    void DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::optional<uint32_t> tick_count, boost::asio::yield_context &yield);
 public:
     explicit ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler);
     static std::shared_ptr<ByBitApi> Create(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler);
 
-    subscriber_ref Subscribe(subscriber_ref subscriber, const std::string& symbol, time from, seconds tick_seconds, std::optional<uint32_t> tick_count = {});
+    subscriber_ref Subscribe(const subscriber_ref &subscriber, const std::string& symbol, time from, seconds tick_seconds, std::optional<uint32_t> tick_count = {});
     void Unsubscribe(subscriber_ref subscriber);
-
 };
 
 }

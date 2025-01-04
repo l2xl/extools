@@ -15,4 +15,9 @@ AsioScheduler::AsioScheduler()
 {
 }
 
+AsioScheduler::~AsioScheduler()
+{
+    m_io_guard.reset();
+    m_thread.join();
+}
 }
