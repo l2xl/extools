@@ -14,6 +14,25 @@
 
 namespace scratcher {
 
+enum class error:int { success, no_host_name, no_time_sync };
+
+class xscratcher_error_category_impl : public boost::system::error_category
+{
+public:
+    virtual ~xscratcher_error_category_impl() = default;
+
+    static xscratcher_error_category_impl instance;
+    const char* name() const noexcept override { return "xscratcher"; }
+    std::string message(int ev) const override;
+    char const* message(int ev, char* buffer, std::size_t len) const noexcept override;
+};
+
+inline boost::system::error_category& xscratcher_error_category()
+{ return xscratcher_error_category_impl::instance; }
+
+inline boost::system::error_code xscratcher_error_code(error e)
+{ return  boost::system::error_code(static_cast<int>(e), xscratcher_error_category());}
+
 using boost::asio::io_context;
 using boost::asio::executor_work_guard;
 using boost::asio::yield_context;

@@ -17,6 +17,7 @@
 #include <deque>
 #include <list>
 #include <shared_mutex>
+#include <nlohmann/json.hpp>
 
 #include "mainwindow.h"
 
@@ -70,8 +71,8 @@ private:
 
     boost::asio::ip::tcp::resolver::results_type m_resolved_host;
 
-    milliseconds m_request_halftrip;
-    milliseconds m_server_time_delta;
+    milliseconds m_request_halftrip = milliseconds(0);
+    std::optional<milliseconds> m_server_time_delta;
 
     std::list<std::shared_ptr<ByBitSubscriber>> m_subscribers;
 
@@ -79,10 +80,13 @@ private:
     data_list_type m_data_cache;
 
     void Spawn(std::function<void(boost::asio::yield_context yield)>);
+    void RequestServer(std::string_view, std::function<void(const nlohmann::json&)>, boost::asio::yield_context &yield);
 
     void DoResolve(boost::asio::yield_context &yield);
     void DoPing(boost::asio::yield_context &yield);
     void DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::optional<uint32_t> tick_count, boost::asio::yield_context &yield);
+
+    void CalcServerTime(time server_time, time request_time, time response_time);
 public:
     explicit ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler);
     static std::shared_ptr<ByBitApi> Create(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler);
