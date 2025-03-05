@@ -1,5 +1,5 @@
 // Scratcher project
-// Copyright (c) 2024 l2xl (l2xl/at/proton.me)
+// Copyright (c) 2024-2025 l2xl (l2xl/at/proton.me)
 // Distributed under the MIT software license, see the accompanying
 // file LICENSE or https://opensource.org/license/mit
 
@@ -18,12 +18,17 @@
 #include <thread>
 #include <sstream>
 
+#include "bybit/error.hpp"
+#include "bybit/stream.hpp"
+
 namespace scratcher::bybit {
 
 namespace {
 
 const char* const REQ_TIME = "/v5/market/time";
 const char* const REQ_KLINE = "/v5/market/kline";
+
+const char* const STREAM_PUBLIC_SPOT = "/v5/public/spot";
 
 std::string generateSignature(const std::string &message, const std::string &secret)
 {
@@ -38,33 +43,21 @@ std::string generateSignature(const std::string &message, const std::string &sec
 
 }
 
-class bybit_error_category_impl : public boost::system::error_category
-{
-public:
-    virtual ~bybit_error_category_impl() = default;
-
-    static bybit_error_category_impl instance;
-    const char* name() const noexcept override { return "bybit"; }
-    std::string message(int ev) const override { return "ByBit error: " + std::to_string(ev); }
-    char const* message(int ev, char* buffer, std::size_t len) const noexcept override
-    {
-        std::snprintf( buffer, len, "ByBit error: %d", ev);
-        return buffer;
-    }
-};
 
 bybit_error_category_impl bybit_error_category_impl::instance;
 
-boost::system::error_category& bybit_error_category()
-{ return bybit_error_category_impl::instance; }
 
-struct ByBitSubscriber
+//----------------------------------------------------------------------------------------------------------------------
+
+struct ByBitSubscription
 {
     const std::string symbol;
     time start_time;
     seconds tick_seconds;
     const_kline_iterator last_read;
-    std::shared_ptr<ByBitDataCache> cache;
+    //std::shared_ptr<ByBitDataCache> cache;
+
+    std::shared_ptr<ByBitStream> m_pubtrade_stream;
 
     long start_timestamp() const
     { return std::chrono::duration_cast<milliseconds>(start_time.time_since_epoch()).count(); }
@@ -72,23 +65,24 @@ struct ByBitSubscriber
     { return std::chrono::duration_cast<milliseconds>((start_time + tick_count * tick_seconds).time_since_epoch()).count(); }
 };
 
-struct ByBitDataCache
-{
-    const std::string symbol;
-    mutable std::shared_mutex mutex;
-    time first_tick_time;
-    seconds tick_duration;
-    kline_sequence_type klines;
+// struct ByBitDataCache
+// {
+//     const std::string symbol;
+//     mutable std::shared_mutex mutex;
+//     time first_tick_time;
+//     seconds tick_duration;
+//     kline_sequence_type klines;
+//
+//     void FillKlines(kline_sequence_type& out, time start_time, seconds tick_duration, size_t tick_count);
+// };
 
-    void FillKlines(kline_sequence_type& out, time start_time, seconds tick_duration, size_t tick_count);
-};
+//----------------------------------------------------------------------------------------------------------------------
 
-namespace ip = boost::asio::ip;
-namespace websock = boost::beast::websocket;
 
+//----------------------------------------------------------------------------------------------------------------------
 
 ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler)
-    : m_host(config->Host()), m_port(config->Port())
+    : mConfig(move(config))
     , mScheduler(std::move(scheduler))
 {
 }
@@ -96,8 +90,9 @@ ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler
 std::shared_ptr<ByBitApi> ByBitApi::Create(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler)
 {
     auto self = std::make_shared<ByBitApi>(config, scheduler);
-    self->Spawn([=](yield_context yield) { self->DoResolve(yield); });
-    self->Spawn([=](yield_context yield) { self->DoPing(yield); });
+    std::weak_ptr ref{self};
+    self->Resolve();
+    self->Spawn([ref](yield_context yield) { if (auto self = ref.lock()) self->DoPing(yield); });
 
     return self;
 }
@@ -105,7 +100,7 @@ std::shared_ptr<ByBitApi> ByBitApi::Create(std::shared_ptr<Config> config, std::
 
 void ByBitApi::Spawn(std::function<void(yield_context yield)> task)
 {
-    auto self_ref = weak_from_this();
+    auto ref = weak_from_this();
     spawn(mScheduler->io(),
           [=](yield_context yield) {
               boost::system::error_code status;
@@ -114,8 +109,7 @@ void ByBitApi::Spawn(std::function<void(yield_context yield)> task)
                   std::cerr << status.message() << std::endl;
                   status.clear();
 
-                  if (auto self = self_ref.lock()) {
-
+                  if (auto self = ref.lock()) {
                       boost::asio::steady_timer t(self->mScheduler->io(), milliseconds(500));
                       t.async_wait(yield[status]);
 
@@ -124,7 +118,7 @@ void ByBitApi::Spawn(std::function<void(yield_context yield)> task)
                           throw status;
                       }
 
-                      if (auto self1 = self_ref.lock())
+                      if (auto self1 = ref.lock())
                           self1->Spawn(task);
                   }
               }
@@ -132,9 +126,9 @@ void ByBitApi::Spawn(std::function<void(yield_context yield)> task)
           [](std::exception_ptr ex) { if (ex) std::rethrow_exception(ex); });
 }
 
-void ByBitApi::RequestServer(std::string_view request_string, std::function<void(const nlohmann::json&)> proc_body, yield_context &yield)
+void ByBitApi::DoRequestServer(std::string_view request_string, std::function<void(const nlohmann::json&)> proc_body, yield_context &yield)
 {
-    if (m_resolved_host.empty()) {
+    if (m_resolved_http_host.empty()) {
         *yield.ec_ = xscratcher_error_code(error::no_host_name);
         return;
     }
@@ -143,13 +137,13 @@ void ByBitApi::RequestServer(std::string_view request_string, std::function<void
 
     auto start_time = std::chrono::utc_clock::now();
 
-    get_lowest_layer(sock).async_connect(m_resolved_host, yield);
+    get_lowest_layer(sock).async_connect(m_resolved_http_host, yield);
     if (*yield.ec_) {
         std::cerr << "connect error: ";
         return;
     }
 
-    if (!SSL_set_tlsext_host_name(sock.native_handle(), m_host.c_str()))
+    if (!SSL_set_tlsext_host_name(sock.native_handle(), mConfig->HttpHost().c_str()))
         throw std::ios_base::failure( "Failed to set SNI Hostname");
 
     sock.async_handshake(ssl::stream_base::client, yield);
@@ -159,7 +153,7 @@ void ByBitApi::RequestServer(std::string_view request_string, std::function<void
     }
 
     boost::beast::http::request<boost::beast::http::string_body> req(boost::beast::http::verb::get, request_string, 11);
-    req.set(boost::beast::http::field::host, m_host);
+    req.set(boost::beast::http::field::host, mConfig->HttpHost());
     req.prepare_payload();
 
     boost::beast::http::async_write(sock, req, yield);
@@ -198,22 +192,40 @@ void ByBitApi::RequestServer(std::string_view request_string, std::function<void
     }
 }
 
-void ByBitApi::DoResolve(yield_context &yield)
+void ByBitApi::Resolve()
 {
+    std::weak_ptr<ByBitApi> self_ref = weak_from_this();
+
     std::clog << "Trying to resolve" << std::endl;
 
-    ip::tcp::resolver resolver(mScheduler->io());
-    m_resolved_host = resolver.async_resolve(m_host, m_port, yield);
-    if (*yield.ec_) {
-        std::cerr << "host resolutoion error";
-    }
-    std::clog << "Host resolved" << std::endl;
+    Spawn([self_ref](yield_context yield) {
+        if (auto self = self_ref.lock()) {
+            ip::tcp::resolver resolver(self->mScheduler->io());
+            self->m_resolved_http_host = resolver.async_resolve(self->mConfig->HttpHost(), self->mConfig->HttpPort(), yield);
+        }
+    });
+
+    Spawn([self_ref](yield_context yield) {
+        if (auto self = self_ref.lock()) {
+            ip::tcp::resolver resolver(self->mScheduler->io());
+            self->m_resolved_websock_host = resolver.async_resolve(self->mConfig->StreamHost(), self->mConfig->StreamPort(), yield);
+        }
+    });
 }
 
 void ByBitApi::DoPing(yield_context &yield)
 {
-    std::clog << "Trying to connect" << std::endl;
-    RequestServer(REQ_TIME, [](const nlohmann::json& ) {/*do nothing*/}, yield);
+    std::clog << "Trying to connect: " << REQ_TIME << std::endl;
+    DoRequestServer(REQ_TIME, [](const nlohmann::json& ) {/*do nothing*/}, yield);
+}
+
+void ByBitApi::DoSubscribePublicTrades(const subscription_ref &s, yield_context &yield)
+{
+    if (std::shared_ptr<ByBitSubscription> subscription = s.lock()) {
+        if (subscription->m_pubtrade_stream) *yield.ec_ = xscratcher_error_code(error::already_opened);
+
+        subscription->m_pubtrade_stream = ByBitStream::Create(shared_from_this(), STREAM_PUBLIC_SPOT, subscription->symbol);
+    }
 }
 
 void ByBitApi::CalcServerTime(time server_time, time request_time, time response_time)
@@ -228,7 +240,7 @@ void ByBitApi::CalcServerTime(time server_time, time request_time, time response
     std::clog << "server delta (ms): " << m_server_time_delta->count() << std::endl;
 }
 
-void ByBitApi::DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::optional<uint32_t> tick_count, yield_context &yield)
+void ByBitApi::DoHttpRequest(std::shared_ptr<ByBitSubscription> subscriber, std::optional<uint32_t> tick_count, yield_context &yield)
 {
     std::clog << "Trying to subscribe" << std::endl;
 
@@ -244,13 +256,13 @@ void ByBitApi::DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::opt
     boost::beast::ssl_stream<boost::beast::tcp_stream> sock{ mScheduler->io(), mScheduler->ssl() };
 
     //get_lowest_layer(sock).expires_after(std::chrono::seconds(10));
-    get_lowest_layer(sock).async_connect(m_resolved_host, yield);
+    get_lowest_layer(sock).async_connect(m_resolved_http_host, yield);
     if (*yield.ec_) {
         std::cerr << "connect error: ";
         return;
     }
 
-    if (!SSL_set_tlsext_host_name(sock.native_handle(), m_host.c_str()))
+    if (!SSL_set_tlsext_host_name(sock.native_handle(), mConfig->HttpHost().c_str()))
         throw std::ios_base::failure( "Failed to set SNI Hostname");
 
     //get_lowest_layer(sock).expires_after(std::chrono::seconds(10));
@@ -275,7 +287,7 @@ void ByBitApi::DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::opt
     std::clog << "req params: " << target_str << std::endl;
 
     boost::beast::http::request<boost::beast::http::string_body> req(boost::beast::http::verb::get, target_str, 11);
-    req.set(boost::beast::http::field::host, m_host);
+    req.set(boost::beast::http::field::host, mConfig->HttpHost());
     req.prepare_payload();
 
     std::clog << "request: " << req << std::endl;
@@ -331,53 +343,62 @@ void ByBitApi::DoSubscribe(std::shared_ptr<ByBitSubscriber> subscriber, std::opt
     //std::thread([this]{ io_ctx.run(); });
 }
 
-ByBitApi::subscriber_ref ByBitApi::Subscribe(const subscriber_ref &s, const std::string& symbol, time from, seconds tick_seconds, std::optional<uint32_t> tick_count)
+
+ByBitApi::subscription_ref ByBitApi::Subscribe(const subscription_ref &s, const std::string& symbol, time from, seconds tick_seconds, std::optional<uint32_t> tick_count)
 {
-    auto subscriber = s.lock();
-    if (!subscriber) {
-        subscriber = std::make_shared<ByBitSubscriber>(symbol);
-        m_subscribers.emplace_back(subscriber);
+    auto subscription = s.lock();
+    if (!subscription) {
+        subscription = std::make_shared<ByBitSubscription>(symbol);
+        m_subscriptions.emplace_back(subscription);
     }
     else {
-        if (subscriber->symbol != symbol) throw SchedulerParamMismatch("symbol");
+        if (subscription->symbol != symbol) throw SchedulerParamMismatch("symbol");
     }
-    if (!subscriber->cache) {
-        std::unique_lock lock(m_data_cache_mutex);
-        auto cache_it = std::find_if(m_data_cache.begin(), m_data_cache.end(),
-                                     [&](const auto& c) {
-                                         if (auto cache = c.lock())
-                                             return cache->symbol == symbol;
-                                         return false;
-                                     });
-        if (cache_it == m_data_cache.end()) {
-            subscriber->cache = std::make_shared<ByBitDataCache>(symbol);
-            m_data_cache.emplace_back(subscriber->cache);
-        }
-    }
+    // if (!subscriber->cache) {
+    //     std::unique_lock lock(m_data_cache_mutex);
+    //     auto cache_it = std::find_if(m_data_cache.begin(), m_data_cache.end(),
+    //                                  [&](const auto& c) {
+    //                                      if (auto cache = c.lock())
+    //                                          return cache->symbol == symbol;
+    //                                      return false;
+    //                                  });
+    //     if (cache_it == m_data_cache.end()) {
+    //         subscriber->cache = std::make_shared<ByBitDataCache>(symbol);
+    //         m_data_cache.emplace_back(subscriber->cache);
+    //     }
+    // }
 
-    subscriber->start_time = from + *m_server_time_delta;
-    subscriber->tick_seconds = tick_seconds;
+    subscription->start_time = from + *m_server_time_delta;
+    subscription->tick_seconds = tick_seconds;
 
-    auto self = shared_from_this();
-    Spawn([=](yield_context yield) { self->DoSubscribe(std::move(subscriber), std::move(tick_count), yield); });
+    auto ref = weak_from_this();
 
-    return subscriber;
+    Spawn([=](yield_context yield) { if (auto self = ref.lock()) self->DoSubscribePublicTrades(subscription, yield); });
+
+    return subscription;
 }
 
-void ByBitApi::Unsubscribe(subscriber_ref s)
+void ByBitApi::Unsubscribe(subscription_ref s)
 {
     if (s.expired()) return;
     if (auto subscriber = s.lock()) {
-        auto s_it = std::find(m_subscribers.begin(), m_subscribers.end(), subscriber);
-        if (s_it != m_subscribers.end())
-            m_subscribers.erase(s_it);
+        auto s_it = std::find(m_subscriptions.begin(), m_subscriptions.end(), subscriber);
+        if (s_it != m_subscriptions.end())
+            m_subscriptions.erase(s_it);
     }
-    {
-        std::unique_lock lock(m_data_cache_mutex);
-        for (auto it = m_data_cache.begin(); it != m_data_cache.end(); it->expired() ? it = m_data_cache.erase(it) : ++it) ; //do nothing
-    }
+    // {
+    //     std::unique_lock lock(m_data_cache_mutex);
+    //     for (auto it = m_data_cache.begin(); it != m_data_cache.end(); it->expired() ? it = m_data_cache.erase(it) : ++it) ; //do nothing
+    // }
+}
+
+void ByBitDataProvider::SubscribePublicTrades()
+{
+    auto start_time = std::chrono::utc_clock::now();// - std::chrono::seconds(60) * 50;
+
+   mApi->Subscribe({}, m_symbol, start_time, seconds(60), 50);
+
+   //auto subscriber = mApi->Subscribe({}, m_symbol)
 }
 
 }
-
-#include <iostream>

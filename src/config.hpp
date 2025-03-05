@@ -1,5 +1,5 @@
 // Scratcher project
-// Copyright (c) 2024 l2xl (l2xl/at/proton.me)
+// Copyright (c) 2024-2025 l2xl (l2xl/at/proton.me)
 // Distributed under the MIT software license, see the accompanying
 // file LICENSE or https://opensource.org/license/mit
 
@@ -8,9 +8,9 @@
 #define CONFIG_HPP
 
 #include "cli11/CLI11.hpp"
+#include "bybit.hpp"
 
-
-class Config {
+class Config : public scratcher::bybit::Config{
     CLI::App mApp;
 
     size_t mVerbose;
@@ -19,7 +19,10 @@ class Config {
     std::string mDataDir;
 
     std::string m_http_host;
-    std::string m_port;
+    std::string m_http_port;
+
+    std::string m_stream_host;
+    std::string m_stream_port;
 
 public:
     Config() = delete;
@@ -29,8 +32,11 @@ public:
     bool Trace() const {return mTrace; }
     const std::string& DataDir() const { return mDataDir; }
 
-    const std::string& Host() const { return m_http_host; }
-    const std::string& Port() const { return m_port; }
+    const std::string& HttpHost() const override { return m_http_host; }
+    const std::string& HttpPort() const override { return m_http_port; }
+
+    const std::string& StreamHost() const override { return m_stream_host; }
+    const std::string& StreamPort() const override { return m_stream_port; }
 };
 
 

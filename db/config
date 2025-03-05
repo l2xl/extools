@@ -1,4 +1,5 @@
 [bybit]
 http-host=api.bybit.com
+http-port=443
 stream-host=stream.bybit.com
-port=443
+stream-port=443

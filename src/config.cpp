@@ -12,15 +12,17 @@
 #include <filesystem>
 
 namespace {
-const char * const CONF = "--config";
+const char * const CONFIG = "--config";
 const char * const DATADIR = "--data-dir,-d";
 const char * const VERBOSE = "--verbose,-v";
 const char * const TRACE = "--debug-trace,-t";
 
 const char* const BYBIT = "bybit";
 
-const char* const HOST = "--http-host";
-const char* const PORT = "--port";
+const char* const HTTP_HOST = "--http-host";
+const char* const HTTP_PORT = "--http-port";
+const char* const STREAM_HOST = "--stream-host";
+const char* const STREAM_PORT = "--stream-port";
 }
 Config::Config(int argc, const char *const argv[])
 {
@@ -35,7 +37,7 @@ Config::Config(int argc, const char *const argv[])
     CLI::App preConf;
     preConf.set_version_flag("--version", []{ return std::string("BScratcher Wallet v.0.1"); }); // Version flag is processed here
     preConf.add_option(DATADIR, data_path, "Directory path to store wallet data")->default_val(home/".scratcher");
-    preConf.add_option(CONF, conf_path, "Config file path")->default_val("config");
+    preConf.add_option(CONFIG, conf_path, "Config file path")->default_val("config");
     try {
        preConf.parse(argc, argv);
     }
@@ -55,13 +57,15 @@ Config::Config(int argc, const char *const argv[])
 
     mApp.set_help_flag("--help,-h", "Display this help information and exit");
     mApp.set_version_flag("--version", []{ return std::string("BScratcher Wallet v.0.1"); }); // Version flag is here for help message
-    mApp.set_config(CONF, conf_path, "Configuration file");
+    mApp.set_config(CONFIG, conf_path, "Configuration file");
     mApp.add_option(DATADIR, mDataDir, "Directory path to store wallet data")->default_val(home/".scratcher")->configurable(false);
     mApp.add_flag(TRACE, mTrace, "Print debug traces to log");
 
     auto bybit = mApp.add_subcommand(BYBIT, "ByBit exchange options")->configurable()->group("Configb File Sections");
-    bybit->add_option(HOST, m_http_host, "ByBit exchange API host")->configurable(true);
-    bybit->add_option(PORT, m_port, "ByBit exchange API port")->configurable(true);
+    bybit->add_option(HTTP_HOST, m_http_host, "ByBit exchange HTTP API host")->configurable(true);
+    bybit->add_option(HTTP_PORT, m_http_port, "ByBit exchange HTTP API port")->configurable(true);
+    bybit->add_option(STREAM_HOST, m_stream_host, "ByBit exchange web-socket stream API host")->configurable(true);
+    bybit->add_option(STREAM_PORT, m_stream_port, "ByBit exchange web-socket stream API port")->configurable(true);
 
     try {
         mApp.parse(argc, argv);

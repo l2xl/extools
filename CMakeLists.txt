@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.5)
 
 project(exscratcher VERSION 0.1 LANGUAGES CXX)
 
+set(CMAKE_VERBOSE_MAKEFILE on)
+
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -32,6 +34,12 @@ set(PROJECT_SOURCES
         src/data/bybit.hpp
         src/data/scheduler.cpp
         src/data/scheduler.hpp
+        src/data/data_provider.cpp
+        src/data/data_provider.hpp
+        src/common/currency.hpp
+        src/data/bybit/stream.cpp
+        src/data/bybit/stream.hpp
+        src/data/bybit/error.hpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -61,6 +69,7 @@ endif()
 include_directories(
         contrib
         src
+        src/common
         src/app
         src/data
         ${Boost_INCLUDE_DIRS}
