@@ -14,40 +14,24 @@
 
 namespace scratcher {
 
-// using std::chrono::seconds;
-// using std::chrono::milliseconds;
-//
 typedef std::chrono::utc_clock::time_point time;
 
-template <typename trading_traits>
+enum class TradeSide:uint8_t { SELL, BUY };
+
 struct Trade
 {
-    std::string symbol;
     std::string id;
     time trade_time;
 
-    typename trading_traits::price_type price;
-    typename trading_traits::volume_type volume;
+    uint64_t price_points;
+    uint64_t volume_points;
+
+    TradeSide side;
 };
 
-//template <typename trading_traits>
 class DataProvider {
-public:
-    virtual ~DataProvider() = default;
-
-    //virtual void SubscribeOrders() = 0;
-    //virtual void SubscribeKLines() = 0;
-    virtual void SubscribePublicTrades() = 0;
-    //virtual void SubscribeOrderBook() = 0;
-
-
 };
 
-// template <typename trading_traits>
-// void SubscribePublicTrades(std::shared_ptr<DataProvider/*<trading_traits>*/> dataProvider, std::function<void(const Trade<trading_traits>&)>)
-// {
-//     dataProvider->SubscribePublicTrades();
-// }
 
 } // scratcher
 

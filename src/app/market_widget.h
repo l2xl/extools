@@ -11,6 +11,7 @@
 
 #include <QWidget>
 
+namespace scratcher {
 class MarketWidget : public QWidget
 {
     Q_OBJECT
@@ -64,7 +65,8 @@ public:
             update();
     }
 
-signals:
-};
+    signals:
+    };
+}
 
 #endif // MARKETWIDGET_H

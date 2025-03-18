@@ -7,6 +7,7 @@
 #include "./ui_mainwindow.h"
 
 #include "bybit.hpp"
+#include "bybit/data_manager.hpp"
 
 #include <chrono>
 
@@ -18,9 +19,8 @@ MainWindow::MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, st
 {
     ui->setupUi(this);
 
-    mMarketData = std::make_shared<scratcher::bybit::ByBitDataProvider>("BTCUSDC", mMarketApi);
 
-    mMarketView = std::make_unique<MarketWidget>(this);
+    mMarketView = std::make_shared<scratcher::MarketWidget>(this);
     this->setCentralWidget(mMarketView.get());
 
     const static std::deque<std::array<double, 4>> sample_data {
@@ -33,7 +33,10 @@ MainWindow::MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, st
 
     mMarketView->SetMarketData(sample_data);
 
-    mMarketData->SubscribePublicTrades();
+    mMarketData = scratcher::bybit::ByBitDataManager::Create("BTCUSDC", mMarketApi);
+    mMarketViewController = std::make_shared<scratcher::MarketController>(mMarketView, mMarketData);
+
+
 
     //scratcher::SubscribePublicTrades<scratcher::bybit::BTCUSDC>(mMarketData, [](const auto& trade){});
 

@@ -3,7 +3,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file LICENSE or https://opensource.org/license/mit
 
-#include "marketwidget.h"
+#include "market_widget.h"
 
 #include <QPoint>
 #include <QRect>
@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <ranges>
 
+namespace scratcher {
 MarketWidget::MarketWidget(QWidget *parent)
     : QWidget{parent}, m_min(std::numeric_limits<double>::infinity()), m_max(std::numeric_limits<double>::infinity())
 {}
@@ -115,5 +116,6 @@ void MarketWidget::resizeEvent(QResizeEvent *event)
 
     calculateResetTimeScale();
     calculateResetQuoteScale();
+}
 
 }

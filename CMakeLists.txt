@@ -19,6 +19,7 @@ find_package(OpenSSL REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
 find_package(Boost 1.83 REQUIRED COMPONENTS context)
+find_package(Boost 1.83 REQUIRED COMPONENTS coroutine)
 
 
 set(PROJECT_SOURCES
@@ -28,8 +29,8 @@ set(PROJECT_SOURCES
         src/app/mainwindow.cpp
         src/app/mainwindow.h
         src/app/mainwindow.ui
-        src/app/marketwidget.cpp
-        src/app/marketwidget.h
+        src/app/market_widget.cpp
+        src/app/market_widget.h
         src/data/bybit.cpp
         src/data/bybit.hpp
         src/data/scheduler.cpp
@@ -39,7 +40,12 @@ set(PROJECT_SOURCES
         src/common/currency.hpp
         src/data/bybit/stream.cpp
         src/data/bybit/stream.hpp
+        src/data/bybit/data_manager.cpp
+        src/data/bybit/data_manager.hpp
         src/data/bybit/error.hpp
+        src/app/market_controller.cpp
+        src/app/market_controller.hpp
+        src/data/bybit/subscription.hpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)

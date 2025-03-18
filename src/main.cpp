@@ -18,7 +18,8 @@ int main(int argc, char *argv[])
 
         auto config = std::make_shared<Config>(argc, argv);
 
-        auto scheduler = std::make_shared<scratcher::AsioScheduler>();
+        auto scheduler = scratcher::AsioScheduler::Create(2);
+
         auto bybit = scratcher::bybit::ByBitApi::Create(config, scheduler);
 
         MainWindow w(bybit, scheduler);

@@ -10,7 +10,8 @@
 
 #include <memory>
 
-#include "marketwidget.h"
+#include "market_widget.h"
+#include "market_controller.hpp"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -22,7 +23,7 @@ QT_END_NAMESPACE
 namespace scratcher {
 namespace bybit {
 class ByBitApi;
-class ByBitDataProvider;
+class ByBitDataManager;
 }
 class AsioScheduler;
 }
@@ -34,8 +35,9 @@ class MainWindow : public QMainWindow
 
     std::shared_ptr<scratcher::AsioScheduler> mScheduler;
     std::shared_ptr<scratcher::bybit::ByBitApi> mMarketApi;
-    std::shared_ptr<scratcher::bybit::ByBitDataProvider> mMarketData;
-    std::unique_ptr<MarketWidget> mMarketView;
+    std::shared_ptr<scratcher::MarketController> mMarketViewController;
+    std::shared_ptr<scratcher::bybit::ByBitDataManager> mMarketData;
+    std::shared_ptr<scratcher::MarketWidget> mMarketView;
 
 public:
     MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, std::shared_ptr<scratcher::AsioScheduler> scheduler, QWidget *parent = nullptr);

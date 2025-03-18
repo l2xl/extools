@@ -6,6 +6,8 @@
 
 #include "scheduler.hpp"
 
+#include <ranges>
+
 namespace scratcher {
 
 namespace {
@@ -38,13 +40,21 @@ char const * xscratcher_error_category_impl::message(int e, char *buffer, std::s
 AsioScheduler::AsioScheduler()
     : m_io_ctx(), m_ssl_ctx(ssl::context::tlsv12_client)
     , m_io_guard(make_work_guard(m_io_ctx))
-    , m_thread([this]{m_io_ctx.run();})
 {
 }
 
 AsioScheduler::~AsioScheduler()
 {
     m_io_guard.reset();
-    m_thread.join();
+    for (auto& t: m_threads) t.join();
+}
+
+std::shared_ptr<AsioScheduler> AsioScheduler::Create(size_t threads)
+{
+    auto self = std::make_shared<AsioScheduler>();
+    for (size_t i: std::ranges::iota_view(0ul, threads))
+        self->m_threads.emplace_back([self]{ self->io().run(); });
+
+    return self;
 }
 }

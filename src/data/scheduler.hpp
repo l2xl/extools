@@ -8,6 +8,7 @@
 #define WORK_SCHEDULER_HPP
 
 #include <thread>
+#include <list>
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/asio/spawn.hpp>
@@ -45,15 +46,15 @@ class AsioScheduler: public std::enable_shared_from_this<AsioScheduler> {
     io_context m_io_ctx;
     ssl::context m_ssl_ctx;
     boost::asio::executor_work_guard<io_context::executor_type> m_io_guard;
-    std::thread m_thread;
+    std::list<std::thread> m_threads;
 public:
     AsioScheduler();
     virtual ~AsioScheduler();
 
+    static std::shared_ptr<AsioScheduler> Create(size_t threads);
+
     io_context& io() {return m_io_ctx; }
     ssl::context& ssl() {return m_ssl_ctx; }
-
-
 };
 }
 
