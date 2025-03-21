@@ -111,7 +111,7 @@ private:
 
     void DoPing(yield_context &yield);
 
-    void SubscribePublicTrades(const std::shared_ptr<ByBitSubscription>& subscription);
+    void SubscribePublicStream(const std::shared_ptr<ByBitSubscription>& subscription);
 
     static void HandleConnectionData(std::weak_ptr<ByBitApi> ref, std::string&& data);
     static void HandleConnectionError(std::weak_ptr<ByBitApi> ref, boost::system::error_code ec);
@@ -124,7 +124,7 @@ public:
     const std::shared_ptr<AsioScheduler>& Scheduler() const
     { return mScheduler; }
 
-    std::shared_ptr<ByBitSubscription> SubscribePublicStream(const std::string& symbol, std::shared_ptr<ByBitDataManager> manager);
+    std::shared_ptr<ByBitSubscription> Subscribe(const std::string& symbol, std::shared_ptr<ByBitDataManager> manager);
     void Unsubscribe(const std::string& symbol);
 };
 

@@ -12,6 +12,7 @@
 #include <deque>
 
 #include <boost/system/system_error.hpp>
+#include <boost/container/flat_map.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -30,12 +31,15 @@ class ByBitDataManager: public DataProvider, public std::enable_shared_from_this
     std::shared_ptr<ByBitApi> mApi;
 
     std::deque<Trade> m_public_trade_cache;
+
+    boost::container::flat_map<uint64_t, uint64_t> m_order_book_bids;
+    boost::container::flat_map<uint64_t, uint64_t> m_order_book_asks;
 public:
     ByBitDataManager(std::string symbol, std::shared_ptr<ByBitApi> api);
 
     static std::shared_ptr<ByBitDataManager> Create(std::string symbol, std::shared_ptr<ByBitApi> api);
 
-    void HandleData(const SubscriptionTopic& topic, const nlohmann::json& data);
+    void HandleData(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& data);
     void HandleError(boost::system::error_code ec);
 
     //void AddUpdateConsumer(std::shared_ptr<IUpdateConsumer>) override;

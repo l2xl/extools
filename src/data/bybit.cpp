@@ -193,16 +193,24 @@ void ByBitApi::DoPing(yield_context &yield)
 void ByBitApi::SpawnStream(std::shared_ptr<ByBitStream> stream, const std::string& symbol)
 {
     stream->Spawn();
-    stream->Message(stream->SubscribeMessage(std::array{SubscriptionTopic{"publicTrade", symbol}}, true));
+    stream->Message(stream->SubscribeMessage(
+        std::array {
+            SubscriptionTopic{"publicTrade", symbol},
+            SubscriptionTopic{"orderbook", 50, symbol},
+        }, true));
 }
 
-void ByBitApi::SubscribePublicTrades(const std::shared_ptr<ByBitSubscription>& subscription)
+void ByBitApi::SubscribePublicStream(const std::shared_ptr<ByBitSubscription>& subscription)
 {
     if (m_public_spot_stream) {
         if (m_public_spot_stream->Status() == ByBitStream::status::STALE)
             throw std::runtime_error("Stale public stream");
 
-        m_public_spot_stream->SubscribeTopics(std::array{SubscriptionTopic{"publicTrade", subscription->symbol}});
+        m_public_spot_stream->SubscribeTopics(
+            std::array {
+                SubscriptionTopic{"publicTrade", subscription->symbol},
+                SubscriptionTopic{"orderbook", 50, subscription->symbol},
+            });
     }
     else {
         std::weak_ptr<ByBitApi> ref = weak_from_this();
@@ -240,7 +248,7 @@ void ByBitApi::HandleConnectionData(std::weak_ptr<ByBitApi> ref, std::string&& d
                                 if (subscript_it != self->m_subscriptions.end()) {
                                     std::weak_ptr s = subscript_it->second;
                                     if (auto subscription = s.lock()) {
-                                        subscription->Handle(topic, payload["data"]);
+                                        subscription->Handle(topic, payload["type"].get<std::string>(), payload["data"]);
                                     }
                                 }
                                 else {
@@ -263,7 +271,7 @@ void ByBitApi::HandleConnectionError(std::weak_ptr<ByBitApi> ref, boost::system:
     if (auto self = ref.lock()) {
         post(self->Scheduler()->io(), [ref, ec] {
             if (auto self = ref.lock()) {
-                for (auto&s: self->m_subscriptions) {
+                for (auto& s: self->m_subscriptions) {
                     s.second->HandleError(ec);
                 }
             }
@@ -385,7 +393,7 @@ void ByBitApi::DoHttpRequest(std::shared_ptr<ByBitSubscription> subscriber, std:
 }
 
 
-std::shared_ptr<ByBitSubscription> ByBitApi::SubscribePublicStream(const std::string& symbol, std::shared_ptr<ByBitDataManager> dataManager)
+std::shared_ptr<ByBitSubscription> ByBitApi::Subscribe(const std::string& symbol, std::shared_ptr<ByBitDataManager> dataManager)
 {
     std::shared_ptr<ByBitSubscription> subscription;
 
@@ -405,7 +413,7 @@ std::shared_ptr<ByBitSubscription> ByBitApi::SubscribePublicStream(const std::st
         }
     }
 
-    SubscribePublicTrades(subscription);
+    SubscribePublicStream(subscription);
 
     return subscription;
 }
