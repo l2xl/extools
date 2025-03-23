@@ -27,6 +27,7 @@ namespace scratcher::bybit {
 namespace {
 
 const char* const REQ_TIME = "/v5/market/time";
+const char* const REQ_INSTRUMENT = "/v5/market/instruments-info";
 const char* const REQ_KLINE = "/v5/market/kline";
 
 const char* const STREAM_PUBLIC_SPOT = "/v5/public/spot";
@@ -73,73 +74,67 @@ std::shared_ptr<ByBitApi> ByBitApi::Create(std::shared_ptr<Config> config, std::
 void ByBitApi::Spawn(std::function<void(yield_context yield)> task)
 {
     spawn(mScheduler->io(),
-          [ref = weak_from_this(), task](yield_context yield) {
-              boost::system::error_code status;
-              task(yield[status]);
-              if (status) {
-                  std::cerr << status.message() << std::endl;
-                  status.clear();
+        [ref = weak_from_this(), task](yield_context yield) {
+            boost::system::error_code status;
+            while (true) {
+                try {
+                    task(yield[status]);
+                    if (status)
+                        throw status;
 
-                  if (auto self = ref.lock()) {
-                      boost::asio::steady_timer t(yield.get_executor(), milliseconds(500));
-                      t.async_wait(yield[status]);
+                    return;
+                }
+                catch (boost::system::error_code &e) {
+                    std::cerr << "Error: " << e.what() << std::endl;
+                }
+                catch (std::exception& e) {
+                    std::cerr << "Error: " << e.what() << std::endl;
+                }
 
-                      if (status) {
-                          std::cerr << "Repeat timer error: " << status.message() << std::endl;
-                          throw status;
-                      }
+                if (auto self = ref.lock()) {
+                    boost::system::error_code timer_error;
+                    boost::asio::steady_timer t(yield.get_executor(), milliseconds(500));
+                    t.async_wait(yield[timer_error]);
 
-                      if (auto self1 = ref.lock())
-                          self1->Spawn(task);
-                  }
-              }
-          },
-          [](std::exception_ptr ex) { if (ex) std::rethrow_exception(ex); });
+                    if (timer_error) {
+                        std::cerr << "Repeat timer error: " << timer_error.message() << std::endl;
+                        throw status;
+                    }
+                }
+            }
+        },
+        [](std::exception_ptr ex) { if (ex) std::rethrow_exception(ex); });
 }
 
-void ByBitApi::DoRequestServer(std::string_view request_string, std::function<void(const nlohmann::json&)> proc_body, yield_context &yield)
+nlohmann::json ByBitApi::DoRequestServer(std::string_view request_string, yield_context &yield)
 {
-    if (m_resolved_http_host.empty()) {
-        *yield.ec_ = xscratcher_error_code(error::no_host_name);
-        return;
-    }
+    if (m_resolved_http_host.empty()) throw xscratcher_error_code(error::no_host_name);
 
+    boost::system::error_code error;
     boost::beast::ssl_stream<boost::beast::tcp_stream> sock(mScheduler->io(), mScheduler->ssl());
 
     auto start_time = std::chrono::utc_clock::now();
 
-    get_lowest_layer(sock).async_connect(m_resolved_http_host, yield);
-    if (*yield.ec_) {
-        std::cerr << "connect error: ";
-        return;
-    }
+    get_lowest_layer(sock).async_connect(m_resolved_http_host, yield[error]);
+    if (error) throw error;
 
     if (!SSL_set_tlsext_host_name(sock.native_handle(), mConfig->HttpHost().c_str()))
         throw std::ios_base::failure( "Failed to set SNI Hostname");
 
-    sock.async_handshake(ssl::stream_base::client, yield);
-    if (*yield.ec_) {
-        std::cerr << "handshake error: ";
-        return;
-    }
+    sock.async_handshake(ssl::stream_base::client, yield[error]);
+    if (error) throw error;
 
     boost::beast::http::request<boost::beast::http::string_body> req(boost::beast::http::verb::get, request_string, 11);
     req.set(boost::beast::http::field::host, mConfig->HttpHost());
     req.prepare_payload();
 
-    boost::beast::http::async_write(sock, req, yield);
-    if (*yield.ec_) {
-        std::cerr << "request error: ";
-        return;
-    }
+    boost::beast::http::async_write(sock, req, yield[error]);
+    if (error) throw error;
 
     boost::beast::flat_buffer buf;
     boost::beast::http::response<boost::beast::http::string_body> resp;
-    boost::beast::http::async_read(sock, buf, resp, yield);
-    if (*yield.ec_) {
-        std::cerr << "read error: ";
-        return;
-    }
+    boost::beast::http::async_read(sock, buf, resp, yield[error]);
+    if (error) throw error;
 
     if (resp.result() == boost::beast::http::status::ok) {
         std::clog << "resp body: " << resp.body() << std::endl;
@@ -150,16 +145,16 @@ void ByBitApi::DoRequestServer(std::string_view request_string, std::function<vo
             std::chrono::utc_clock::time_point server_time = std::chrono::time_point<std::chrono::utc_clock>(milliseconds(resp_json["time"].get<long>()));
             CalcServerTime(server_time, start_time, end_time);
 
-            proc_body(resp_json);
+            return resp_json;
         }
         else {
             std::cerr << "bybit returned error: " << resp_json["retMsg"] << std::endl;
-            *yield.ec_ = boost::system::error_code(resp_json["retCode"].get<int>(), bybit_error_category());
+            throw boost::system::error_code(resp_json["retCode"].get<int>(), bybit_error_category());
         }
     }
     else {
         std::cerr << "http returned error: " << resp.reason() << std::endl;
-        *yield.ec_ = boost::system::error_code(resp.result_int(), bybit_error_category());
+        throw boost::system::error_code(resp.result_int(), bybit_error_category());
     }
 }
 
@@ -187,7 +182,19 @@ void ByBitApi::Resolve()
 void ByBitApi::DoPing(yield_context &yield)
 {
     std::clog << "Trying to connect: " << REQ_TIME << std::endl;
-    DoRequestServer(REQ_TIME, [](const nlohmann::json& ) {/*do nothing*/}, yield);
+    DoRequestServer(REQ_TIME, yield);
+}
+
+void ByBitApi::DoGetInstrumentInfo(const std::shared_ptr<ByBitSubscription> &subscription, yield_context &yield)
+{
+    std::ostringstream buf;
+    buf << REQ_INSTRUMENT << "?category=spot&symbol=" << subscription->symbol;
+    auto resp = DoRequestServer(buf.str(), yield);
+
+    if (resp["result"].is_object()) {
+        subscription->dataManager->HandleInstrumentData(resp["result"]);
+    }
+    else throw WrongServerData("InstrumentsInfo response contains no \"result\" section");
 }
 
 void ByBitApi::SpawnStream(std::shared_ptr<ByBitStream> stream, const std::string& symbol)
@@ -292,8 +299,8 @@ void ByBitApi::CalcServerTime(time server_time, time request_time, time response
     std::clog << "server delta (ms): " << m_server_time_delta->count() << std::endl;
 }
 
-void ByBitApi::DoHttpRequest(std::shared_ptr<ByBitSubscription> subscriber, std::optional<uint32_t> tick_count, yield_context &yield)
-{
+// void ByBitApi::DoHttpRequest(std::shared_ptr<ByBitSubscription> subscriber, std::optional<uint32_t> tick_count, yield_context &yield)
+// {
     // if (!m_server_time_delta) {
     //     *yield.ec_ = xscratcher_error_code(error::no_time_sync);
     //     return;
@@ -390,7 +397,7 @@ void ByBitApi::DoHttpRequest(std::shared_ptr<ByBitSubscription> subscriber, std:
     //
     // });
 
-}
+//}
 
 
 std::shared_ptr<ByBitSubscription> ByBitApi::Subscribe(const std::string& symbol, std::shared_ptr<ByBitDataManager> dataManager)
@@ -413,7 +420,12 @@ std::shared_ptr<ByBitSubscription> ByBitApi::Subscribe(const std::string& symbol
         }
     }
 
-    SubscribePublicStream(subscription);
+    Spawn([subscription, ref=weak_from_this()](yield_context yield) {
+        if (auto self = ref.lock()) {
+            self->DoGetInstrumentInfo(subscription, yield);
+            self->SubscribePublicStream(subscription);
+        }
+    });
 
     return subscription;
 }
@@ -428,7 +440,10 @@ void ByBitApi::Unsubscribe(const std::string& symbol)
             m_public_spot_stream.reset();
         }
         else {
-            m_public_spot_stream->UnsubscribeTopics(std::array{SubscriptionTopic{"publicTrade", symbol}});
+            m_public_spot_stream->UnsubscribeTopics(std::array {
+                SubscriptionTopic{"publicTrade", symbol},
+                SubscriptionTopic{"orderbook", 50, symbol},
+            });
         }
     }
 

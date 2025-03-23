@@ -51,7 +51,7 @@ public:
 class SchedulerParamMismatch : public SchedulerError
 {
 public:
-    explicit SchedulerParamMismatch(std::string&& what) noexcept: SchedulerError(what) {}
+    explicit SchedulerParamMismatch(std::string&& what) noexcept: SchedulerError(move(what)) {}
 };
 
 class PublicStreamClosed : public std::runtime_error
@@ -60,6 +60,11 @@ public:
     explicit PublicStreamClosed() noexcept: std::runtime_error("ByBit Public Stream is closed") {}
 };
 
+class WrongServerData : public std::runtime_error
+{
+public:
+    WrongServerData(std::string&& what) noexcept : std::runtime_error(move(what)) {}
+};
 
 using std::chrono::seconds;
 using std::chrono::milliseconds;
@@ -103,13 +108,15 @@ private:
 
     void Spawn(std::function<void(yield_context yield)>);
 
-    void DoRequestServer(std::string_view, std::function<void(const nlohmann::json&)>, yield_context &yield);
+    nlohmann::json DoRequestServer(std::string_view request_string, yield_context &yield);
 
     void SpawnStream(std::shared_ptr<ByBitStream> stream, const std::string &symbol);
 
-    void DoHttpRequest(std::shared_ptr<ByBitSubscription> subscriber, std::optional<uint32_t> tick_count, yield_context &yield);
+    //void DoHttpRequest(std::shared_ptr<ByBitSubscription> subscriber, std::optional<uint32_t> tick_count, yield_context &yield);
 
     void DoPing(yield_context &yield);
+
+    void DoGetInstrumentInfo(const std::shared_ptr<ByBitSubscription> &subscription, yield_context &yield);
 
     void SubscribePublicStream(const std::shared_ptr<ByBitSubscription>& subscription);
 

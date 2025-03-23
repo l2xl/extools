@@ -26,6 +26,37 @@ std::shared_ptr<ByBitDataManager> ByBitDataManager::Create(std::string symbol, s
     return collector;
 }
 
+void ByBitDataManager::HandleInstrumentData(const nlohmann::json &data)
+{
+    if (data["category"] != "spot") throw WrongServerData("Wrong InstrumentsInfo category: " + data["category"].get<std::string>());
+    if (!data["list"].is_array())  throw WrongServerData("No or wrong InstrumentsInfo list");
+
+    for (const auto instr: data["list"]) {
+        if (instr["symbol"] != m_symbol) continue;
+
+        if (!(instr["priceFilter"].is_object() && instr["priceFilter"].contains("tickSize"))) throw WrongServerData("No or wrong InstrumentsInfo priceFilter");
+
+        if (!(instr["lotSizeFilter"].is_object() &&
+              instr["lotSizeFilter"].contains("basePrecision") &&
+              instr["lotSizeFilter"].contains("quotePrecision") &&
+              instr["lotSizeFilter"].contains("minOrderQty") &&
+              instr["lotSizeFilter"].contains("maxOrderQty") &&
+              instr["lotSizeFilter"].contains("minOrderAmt") &&
+              instr["lotSizeFilter"].contains("maxOrderAmt") ))
+            throw WrongServerData("No or wrong InstrumentsInfo lotSizeFilter");
+
+        m_price_point = currency<uint64_t>(instr["priceFilter"]["tickSize"].get<std::string>());
+
+        m_price_precision = currency<uint64_t>(instr["lotSizeFilter"]["quotePrecision"].get<std::string>());
+        m_volume_point = currency<uint64_t>(instr["lotSizeFilter"]["basePrecision"].get<std::string>());
+        m_volume_precision = currency<uint64_t>(instr["lotSizeFilter"]["basePrecision"].get<std::string>());
+        m_min_volume = currency<uint64_t>(instr["lotSizeFilter"]["minOrderQty"].get<std::string>());
+        m_max_volume = currency<uint64_t>(instr["lotSizeFilter"]["maxOrderQty"].get<std::string>());
+        m_min_amount = currency<uint64_t>(instr["lotSizeFilter"]["minOrderAmt"].get<std::string>());
+        m_max_amount = currency<uint64_t>(instr["lotSizeFilter"]["maxOrderAmt"].get<std::string>());
+    }
+}
+
 void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& data)
 {
     assert(topic.Symbol() == m_symbol);
