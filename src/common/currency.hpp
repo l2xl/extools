@@ -56,6 +56,20 @@ namespace scratcher {
 //     // }
 // };
 
+namespace {
+    size_t parse_presision_decimals(std::string_view str)
+    {
+        if (str.empty()) throw std::invalid_argument("empty currency string");
+        size_t res = 0;
+        if (auto point_pos = str.find('.'); point_pos != std::string_view::npos) {
+            if (point_pos == str.length() - 1 || str.find('.', point_pos + 1) != std::string_view::npos) throw std::invalid_argument("invalid currency format: " + std::string(str));
+
+            return str.length() - point_pos - 1;
+        }
+        return res;
+    }
+}
+
 template<std::integral T/*, std::derived_from<fixed_point_spec> SPEC*/>
 class currency
 {
@@ -69,6 +83,9 @@ public:
     constexpr currency(I val, size_t decimals)
         : m_decimals(decimals), m_multiplier(std::pow(10, decimals)), m_value(static_cast<T>(val*m_multiplier)) {}
 
+    explicit currency(std::string_view str) : currency(0, parse_presision_decimals(str))
+    { parse(str); }
+
     currency(const currency& c) = default;
     //currency(currency&& c) noexcept = default;
 
@@ -76,6 +93,7 @@ public:
     {
         if (m_multiplier != c.m_multiplier) throw std::invalid_argument("inconsistent multiplier");
         m_value = c.m_value;
+        return *this;
     }
     //currency& operator=(currency&& c) noexcept = default;
 

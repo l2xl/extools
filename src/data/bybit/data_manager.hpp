@@ -30,6 +30,15 @@ class ByBitDataManager: public DataProvider, public std::enable_shared_from_this
     const std::string m_symbol;
     std::shared_ptr<ByBitApi> mApi;
 
+    std::optional<currency<uint64_t>> m_price_point;
+    std::optional<currency<uint64_t>> m_price_precision;
+    std::optional<currency<uint64_t>> m_volume_point;
+    std::optional<currency<uint64_t>> m_volume_precision;
+    std::optional<currency<uint64_t>> m_min_volume; // Min order volume
+    std::optional<currency<uint64_t>> m_max_volume; // Max order volume
+    std::optional<currency<uint64_t>> m_min_amount; // Min order amount/cost
+    std::optional<currency<uint64_t>> m_max_amount; // Max order amount/cost
+
     std::deque<Trade> m_public_trade_cache;
 
     boost::container::flat_map<uint64_t, uint64_t> m_order_book_bids;
@@ -38,6 +47,8 @@ public:
     ByBitDataManager(std::string symbol, std::shared_ptr<ByBitApi> api);
 
     static std::shared_ptr<ByBitDataManager> Create(std::string symbol, std::shared_ptr<ByBitApi> api);
+
+    void HandleInstrumentData(const nlohmann::json& data);
 
     void HandleData(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& data);
     void HandleError(boost::system::error_code ec);
