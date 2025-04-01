@@ -17,6 +17,9 @@ struct ByBitSubscription
 
     std::shared_ptr<ByBitDataManager> dataManager;
 
+    bool IsReady() const
+    { return dataManager && dataManager->IsReadyHandleData(); }
+
     void Handle(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& payload)
     { if (dataManager) dataManager->HandleData(topic, type, payload); }
 
