@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 OLD)
+endif()
+
 project(exscratcher VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_VERBOSE_MAKEFILE on)
@@ -18,8 +22,7 @@ find_package(OpenSSL REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
-find_package(Boost 1.83 REQUIRED COMPONENTS context)
-find_package(Boost 1.83 REQUIRED COMPONENTS coroutine)
+find_package(Boost 1.83 REQUIRED COMPONENTS context coroutine)
 
 
 set(PROJECT_SOURCES
