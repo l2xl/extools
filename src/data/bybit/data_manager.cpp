@@ -59,8 +59,8 @@ void ByBitDataManager::HandleInstrumentData(const nlohmann::json &data)
 
 void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& data)
 {
-    assert(topic.Symbol() == m_symbol);
-
+    if (*topic.Symbol() != m_symbol) throw std::invalid_argument("Instrument symbol does not match: " + std::string(*topic.Symbol()));
+    if (!IsReadyHandleData()) throw std::runtime_error("Instrument configuration is not ready");
 
     if (topic.Title() == "publicTrade") {
         if (!data.is_array()) throw std::invalid_argument("Invalid pablic trade data");
@@ -80,10 +80,10 @@ void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::str
 
             time trade_time(milliseconds(t["T"].get<long>()));
 
-            currency<uint64_t> price(0, 2);
+            currency<uint64_t> price = *m_price_point;
             price.parse(t["p"].get<std::string>());
 
-            currency<uint64_t> value(0, 8);
+            currency<uint64_t> value = *m_volume_point;
             value.parse(t["v"].get<std::string>());
 
             std::clog << side_str << ": " << trade_time << ", price (points): " << price.raw() << ", volume (points): " << value.raw() << std::endl;
@@ -104,10 +104,10 @@ void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::str
             for (const auto& bid: data["b"]) {
                 if (!(bid.is_array() && bid.size() == 2)) throw std::invalid_argument("Wrong order book bid entry");
 
-                currency<uint64_t> price(0, 2);
+                currency<uint64_t> price = *m_price_point;
                 price.parse(bid[0].get<std::string>());
 
-                currency<uint64_t> volume(0, 8);
+                currency<uint64_t> volume = *m_volume_point;
                 volume.parse(bid[1].get<std::string>());
 
                 m_order_book_bids.emplace_hint(m_order_book_bids.begin(), price.raw(), volume.raw());
@@ -115,10 +115,10 @@ void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::str
             for (const auto& ask: data["a"]) {
                 if (!(ask.is_array() && ask.size() == 2)) throw std::invalid_argument("Wrong order book bid entry");
 
-                currency<uint64_t> price(0, 2);
+                currency<uint64_t> price = *m_price_point;
                 price.parse(ask[0].get<std::string>());
 
-                currency<uint64_t> volume(0, 8);
+                currency<uint64_t> volume = *m_volume_point;
                 volume.parse(ask[1].get<std::string>());
 
                 m_order_book_bids.emplace_hint(m_order_book_bids.end(), price.raw(), volume.raw());
@@ -128,10 +128,10 @@ void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::str
             for (const auto& bid: data["b"]) {
                 if (!(bid.is_array() && bid.size() == 2)) throw std::invalid_argument("Wrong order book bid entry");
 
-                currency<uint64_t> price(0, 2);
+                currency<uint64_t> price = *m_price_point;
                 price.parse(bid[0].get<std::string>());
 
-                currency<uint64_t> volume(0, 8);
+                currency<uint64_t> volume = *m_volume_point;
                 volume.parse(bid[1].get<std::string>());
 
                 if (volume.raw() == 0)

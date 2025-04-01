@@ -10,6 +10,7 @@
 #include <string>
 #include <memory>
 #include <deque>
+#include <boost/asio/detail/socket_option.hpp>
 
 #include <boost/system/system_error.hpp>
 #include <boost/container/flat_map.hpp>
@@ -49,6 +50,8 @@ public:
     static std::shared_ptr<ByBitDataManager> Create(std::string symbol, std::shared_ptr<ByBitApi> api);
 
     void HandleInstrumentData(const nlohmann::json& data);
+    bool IsReadyHandleData() const
+    { return m_price_point && m_volume_point; }
 
     void HandleData(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& data);
     void HandleError(boost::system::error_code ec);

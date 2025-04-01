@@ -236,10 +236,13 @@ void ByBitApi::HandleConnectionData(std::weak_ptr<ByBitApi> ref, std::string&& d
 
         post(self->m_data_queue_strand, [ref]() {
             if (auto self = ref.lock()) {
-                self->m_data_queue.consume_all([ref](std::string data) {
-                    auto payload = nlohmann::json::parse(data);
+
+                /*self->m_data_queue.consume_all([ref](std::string data)*/
+                while (!self->m_data_queue.empty()) {
+                    auto payload = nlohmann::json::parse(self->m_data_queue.front());
 
                     if (payload.find("op") != payload.end()) {
+                        self->m_data_queue.pop();
                         if (payload["success"]) {
                             std::clog << payload["op"] << '/' <<payload["req_id"] << ": " << payload["success"] << std::endl;
                         }
@@ -255,19 +258,24 @@ void ByBitApi::HandleConnectionData(std::weak_ptr<ByBitApi> ref, std::string&& d
                                 if (subscript_it != self->m_subscriptions.end()) {
                                     std::weak_ptr s = subscript_it->second;
                                     if (auto subscription = s.lock()) {
-                                        subscription->Handle(topic, payload["type"].get<std::string>(), payload["data"]);
+                                        if (subscription->IsReady()) {
+                                            subscription->Handle(topic, payload["type"].get<std::string>(), payload["data"]);
+                                            self->m_data_queue.pop();
+                                        }
                                     }
                                 }
                                 else {
-                                    std::cerr << "Unhandled server data: " << data << std::endl;
+                                    std::cerr << "Unhandled server data: " << self->m_data_queue.front() << std::endl;
+                                    self->m_data_queue.pop();
                                 }
                             }
                         }
                     }
                     else {
-                        std::cerr << "Unhandled server data: " << data << std::endl;
+                        std::cerr << "Unhandled server data: " << self->m_data_queue.front() << std::endl;
+                        self->m_data_queue.pop();
                     }
-                });
+                }
             }
         });
     }
