@@ -10,7 +10,7 @@
 
 #include <memory>
 
-#include "market_widget.h"
+#include "widget/scratch_widget.h"
 #include "market_controller.hpp"
 
 QT_BEGIN_NAMESPACE
@@ -37,7 +37,7 @@ class MainWindow : public QMainWindow
     std::shared_ptr<scratcher::bybit::ByBitApi> mMarketApi;
     std::shared_ptr<scratcher::MarketController> mMarketViewController;
     std::shared_ptr<scratcher::bybit::ByBitDataManager> mMarketData;
-    std::shared_ptr<scratcher::MarketWidget> mMarketView;
+    std::shared_ptr<scratcher::DataScratchWidget> mMarketView;
 
 public:
     MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, std::shared_ptr<scratcher::AsioScheduler> scheduler, QWidget *parent = nullptr);

@@ -124,8 +124,10 @@ private:
     static void HandleConnectionError(std::weak_ptr<ByBitApi> ref, boost::system::error_code ec);
 
     void CalcServerTime(time server_time, time request_time, time response_time);
+
+    struct EnsurePrivate {};
 public:
-    explicit ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler);
+    explicit ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler, EnsurePrivate);
     static std::shared_ptr<ByBitApi> Create(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler);
 
     const std::shared_ptr<AsioScheduler>& Scheduler() const

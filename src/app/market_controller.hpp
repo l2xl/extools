@@ -11,16 +11,22 @@
 
 namespace scratcher {
 
-class MarketWidget;
-class DataProvider;
+class DataScratchWidget;
+class IDataProvider;
+class Scratcher;
 
 class MarketController {
-    std::weak_ptr<MarketWidget> mWidget;
-    std::shared_ptr<DataProvider> mDataProvider;
+    std::weak_ptr<DataScratchWidget> mWidget;
+    std::shared_ptr<IDataProvider> mDataProvider;
+
+    std::shared_ptr<Scratcher> mPriceRuler;
+    std::shared_ptr<Scratcher> mQuoteGraph;
+
+    struct EnsurePrivate {};
 public:
-    MarketController(std::shared_ptr<MarketWidget> widget, std::shared_ptr<DataProvider> dataProvider)
-        : mWidget(move(widget)), mDataProvider(dataProvider)
-    {}
+    MarketController(std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider, EnsurePrivate);
+
+    static std::shared_ptr<MarketController> Create(std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider);
 };
 
 }

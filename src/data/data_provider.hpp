@@ -29,7 +29,16 @@ struct Trade
     TradeSide side;
 };
 
-class DataProvider {
+struct Scratcher;
+
+struct IDataProvider {
+    virtual ~IDataProvider() = default;
+    virtual void AddInsctrumentDataUpdateHandler(std::function<void()> h) = 0;
+    virtual void AddMarketDataUpdateHandler(std::function<void()> h) = 0;
+
+    virtual std::shared_ptr<Scratcher> MakePriceRulerScratcher() const = 0;
+    virtual std::shared_ptr<Scratcher> MakeQuoteGraphScratcher() const = 0;
+    virtual std::shared_ptr<Scratcher> MakeOrdersSpreadScratcher() const = 0;
 };
 
 

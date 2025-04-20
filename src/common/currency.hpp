@@ -97,6 +97,10 @@ public:
     }
     //currency& operator=(currency&& c) noexcept = default;
 
+    template <std::integral I>
+    void set_raw(I raw)
+    { m_value = static_cast<T>(raw); }
+
     bool operator==(const currency& c) const
     {
         if (m_multiplier == c.m_multiplier)
@@ -128,17 +132,10 @@ public:
 
     std::string to_string() const
     {
-        if (!m_value) return "0";
-        auto d = std::div(m_value, m_multiplier);
-        std::string res = d.rem && d.quot ? (std::to_string(d.quot) + "." + std::to_string(d.rem))
-                               : (d.quot ? std::to_string(d.quot) : "0." + std::to_string(d.rem));
+        std::string res = std::to_string(m_value);
+        while (res.length() < m_decimals + 1) res.insert(res.begin(), '0');
+        res.insert(res.end() - m_decimals, '.');
 
-        if (d.quot) {
-            size_t cut_zeroes = 0;
-            for (auto p = res.rbegin(); p != res.rend() && *p == '0'; ++p, ++cut_zeroes) ;
-
-            return res.substr(0, res.length() - cut_zeroes);
-        }
         return res;
     }
 

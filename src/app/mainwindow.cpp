@@ -11,6 +11,13 @@
 
 #include <chrono>
 
+using std::chrono::seconds;
+using std::chrono::milliseconds;
+using std::chrono::days;
+
+typedef std::chrono::utc_clock::time_point time_point;
+
+
 MainWindow::MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, std::shared_ptr<scratcher::AsioScheduler> scheduler, QWidget *parent)
     : QMainWindow(parent)
     , ui(std::make_unique<Ui::MainWindow>())
@@ -19,31 +26,13 @@ MainWindow::MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, st
 {
     ui->setupUi(this);
 
-
-    mMarketView = std::make_shared<scratcher::MarketWidget>(this);
-    this->setCentralWidget(mMarketView.get());
-
-    const static std::deque<std::array<double, 4>> sample_data {
-        {75,100,50,90},
-        {90,50,100,60},
-        {60,55,95,65},
-        {65,65,90,85},
-        {85,85,55,55},
-        {53,55,30,45}};
-
-    mMarketView->SetMarketData(sample_data);
+    mMarketView = std::make_shared<scratcher::DataScratchWidget>(this);
+    mMarketView->setMinimumSize(640, 480);
 
     mMarketData = scratcher::bybit::ByBitDataManager::Create("BTCUSDC", mMarketApi);
-    mMarketViewController = std::make_shared<scratcher::MarketController>(mMarketView, mMarketData);
+    mMarketViewController = scratcher::MarketController::Create(mMarketView, mMarketData);
 
-
-
-    //scratcher::SubscribePublicTrades<scratcher::bybit::BTCUSDC>(mMarketData, [](const auto& trade){});
-
-    // auto start_time = std::chrono::utc_clock::now() - std::chrono::seconds(60) * 50;
-    //
-    // mMarketApi->Subscribe({}, "BTCUSDC", start_time, std::chrono::seconds(60), 50);
-
+    this->setCentralWidget(mMarketView.get());
 }
 
 MainWindow::~MainWindow()

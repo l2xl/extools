@@ -47,8 +47,10 @@ class AsioScheduler: public std::enable_shared_from_this<AsioScheduler> {
     ssl::context m_ssl_ctx;
     boost::asio::executor_work_guard<io_context::executor_type> m_io_guard;
     std::list<std::thread> m_threads;
+
+    struct EnsurePrivate {};
 public:
-    AsioScheduler();
+    explicit AsioScheduler(EnsurePrivate);
     virtual ~AsioScheduler();
 
     static std::shared_ptr<AsioScheduler> Create(size_t threads);

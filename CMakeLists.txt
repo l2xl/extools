@@ -40,8 +40,8 @@ set(PROJECT_SOURCES
         src/app/mainwindow.cpp
         src/app/mainwindow.h
         src/app/mainwindow.ui
-        src/app/market_widget.cpp
-        src/app/market_widget.h
+        src/widget/scratch_widget.cpp
+        src/widget/scratch_widget.h
         src/data/bybit.cpp
         src/data/bybit.hpp
         src/data/scheduler.cpp
@@ -57,11 +57,15 @@ set(PROJECT_SOURCES
         src/app/market_controller.cpp
         src/app/market_controller.hpp
         src/data/bybit/subscription.hpp
+        src/widget/scratcher.hpp
+        src/data/bybit/quote_scratcher.cpp
+        src/data/bybit/quote_scratcher.hpp
 )
 
 qt_add_executable(exscratcher MANUAL_FINALIZATION ${PROJECT_SOURCES})
 
 include_directories(
+        .
         contrib
         src
         src/common

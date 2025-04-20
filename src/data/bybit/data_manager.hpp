@@ -10,6 +10,7 @@
 #include <string>
 #include <memory>
 #include <deque>
+#include <list>
 #include <boost/asio/detail/socket_option.hpp>
 
 #include <boost/system/system_error.hpp>
@@ -20,13 +21,17 @@
 #include "data_provider.hpp"
 
 
-namespace scratcher::bybit {
+namespace scratcher {
+
+class Scratcher;
+
+namespace bybit {
 
 class ByBitApi;
 class SubscriptionTopic;
 
 
-class ByBitDataManager: public DataProvider, public std::enable_shared_from_this<ByBitDataManager>
+class ByBitDataManager: public IDataProvider, public std::enable_shared_from_this<ByBitDataManager>
 {
     const std::string m_symbol;
     std::shared_ptr<ByBitApi> mApi;
@@ -44,10 +49,23 @@ class ByBitDataManager: public DataProvider, public std::enable_shared_from_this
 
     boost::container::flat_map<uint64_t, uint64_t> m_order_book_bids;
     boost::container::flat_map<uint64_t, uint64_t> m_order_book_asks;
+
+    std::list<std::function<void()>> m_instrument_handlers;
+    std::list<std::function<void()>> m_marketdata_handlers;
 public:
     ByBitDataManager(std::string symbol, std::shared_ptr<ByBitApi> api);
+    ~ByBitDataManager() override = default;
 
     static std::shared_ptr<ByBitDataManager> Create(std::string symbol, std::shared_ptr<ByBitApi> api);
+
+    const std::deque<Trade>& PublicTradeCache() const
+    { return m_public_trade_cache; }
+
+    const boost::container::flat_map<uint64_t, uint64_t>& Bids() const
+    { return m_order_book_bids; }
+
+    const boost::container::flat_map<uint64_t, uint64_t>& Asks() const
+    { return m_order_book_asks; }
 
     void HandleInstrumentData(const nlohmann::json& data);
     bool IsReadyHandleData() const
@@ -56,11 +74,16 @@ public:
     void HandleData(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& data);
     void HandleError(boost::system::error_code ec);
 
-    //void AddUpdateConsumer(std::shared_ptr<IUpdateConsumer>) override;
+    void AddInsctrumentDataUpdateHandler(std::function<void()> h) override;
+    void AddMarketDataUpdateHandler(std::function<void()> h) override;
+
+    std::shared_ptr<Scratcher> MakePriceRulerScratcher() const override;
+    std::shared_ptr<Scratcher> MakeQuoteGraphScratcher() const override;
+    std::shared_ptr<Scratcher> MakeOrdersSpreadScratcher() const override;
 
 };
 
 } // scratcher::bybit
-
+}
 
 #endif //DATA_COLLECTOR_HPP

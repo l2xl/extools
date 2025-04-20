@@ -52,7 +52,7 @@ bybit_error_category_impl bybit_error_category_impl::instance;
 //----------------------------------------------------------------------------------------------------------------------
 
 
-ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler)
+ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler, EnsurePrivate)
     : mConfig(move(config))
     , mScheduler(std::move(scheduler))
     , m_data_queue(10)
@@ -62,10 +62,9 @@ ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler
 
 std::shared_ptr<ByBitApi> ByBitApi::Create(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler)
 {
-    auto self = std::make_shared<ByBitApi>(config, scheduler);
+    auto self = std::make_shared<ByBitApi>(config, scheduler, EnsurePrivate{});
     std::weak_ptr ref{self};
     self->Resolve();
-    //self->Spawn([ref](yield_context yield) { if (auto self = ref.lock()) self->DoPing(yield); });
 
     return self;
 }

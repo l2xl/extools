@@ -6,16 +6,17 @@
 
 #include <iostream>
 
-#include "bybit/data_manager.hpp"
+#include "data_manager.hpp"
 #include "bybit.hpp"
 #include "stream.hpp"
-#include "bybit/subscription.hpp"
+#include "subscription.hpp"
+#include "quote_scratcher.hpp"
+#include "widget/scratch_widget.h"
 
 namespace scratcher::bybit {
 
 ByBitDataManager::ByBitDataManager(std::string symbol, std::shared_ptr<ByBitApi> api)
-    : DataProvider()
-    , m_symbol(move(symbol)), mApi(move(api))
+    : m_symbol(move(symbol)), mApi(move(api))
 {
 }
 
@@ -55,6 +56,8 @@ void ByBitDataManager::HandleInstrumentData(const nlohmann::json &data)
         m_min_amount = currency<uint64_t>(instr["lotSizeFilter"]["minOrderAmt"].get<std::string>());
         m_max_amount = currency<uint64_t>(instr["lotSizeFilter"]["maxOrderAmt"].get<std::string>());
     }
+
+    for (const auto& h: m_instrument_handlers) h();
 }
 
 void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& data)
@@ -156,6 +159,8 @@ void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::str
         }
         else throw std::invalid_argument("Unknown order book data type: " + type);
     }
+
+    for (const auto& h: m_marketdata_handlers) h();
 }
 
 void ByBitDataManager::HandleError(boost::system::error_code ec)
@@ -165,5 +170,35 @@ void ByBitDataManager::HandleError(boost::system::error_code ec)
     mApi->Unsubscribe(m_symbol);
     mApi->Subscribe(m_symbol, shared_from_this());
 }
+
+void ByBitDataManager::AddInsctrumentDataUpdateHandler(std::function<void()> h)
+{
+    if (m_price_point && m_volume_point) h();
+
+    m_instrument_handlers.emplace_back(std::move(h));
+}
+
+void ByBitDataManager::AddMarketDataUpdateHandler(std::function<void()> h)
+{
+    m_marketdata_handlers.emplace_back(std::move(h));
+}
+
+std::shared_ptr<Scratcher> ByBitDataManager::MakePriceRulerScratcher() const
+{
+    if (!m_price_point) throw std::runtime_error("No instrument data");
+
+    return std::make_shared<PriceRuler>(*m_price_point);
+}
+
+std::shared_ptr<Scratcher> ByBitDataManager::MakeQuoteGraphScratcher() const
+{
+    return std::make_shared<QuoteScratcher>(shared_from_this());
+}
+
+std::shared_ptr<Scratcher> ByBitDataManager::MakeOrdersSpreadScratcher() const
+{
+    return nullptr;
+}
+
 } // scratcher::bybit
 
