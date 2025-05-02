@@ -49,6 +49,7 @@ set(PROJECT_SOURCES
         src/data/data_provider.cpp
         src/data/data_provider.hpp
         src/common/currency.hpp
+        src/common/timedef.hpp
         src/data/bybit/stream.cpp
         src/data/bybit/stream.hpp
         src/data/bybit/data_manager.cpp
@@ -58,8 +59,8 @@ set(PROJECT_SOURCES
         src/app/market_controller.hpp
         src/data/bybit/subscription.hpp
         src/widget/scratcher.hpp
-        src/data/bybit/quote_scratcher.cpp
-        src/data/bybit/quote_scratcher.hpp
+        src/widget/quote_scratcher.cpp
+        src/widget/quote_scratcher.hpp
 )
 
 qt_add_executable(exscratcher MANUAL_FINALIZATION ${PROJECT_SOURCES})

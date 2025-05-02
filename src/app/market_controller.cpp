@@ -13,11 +13,6 @@
 
 namespace scratcher {
 
-using std::chrono::seconds;
-using std::chrono::milliseconds;
-using std::chrono::days;
-using std::chrono::hours;
-
 
 MarketController::MarketController(std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider, EnsurePrivate)
     : mWidget(widget), mDataProvider(dataProvider)
@@ -45,7 +40,7 @@ std::shared_ptr<MarketController> MarketController::Create(std::shared_ptr<DataS
                 if (self->mQuoteGraph) widget->RemoveScratcher(self->mQuoteGraph);
 
                 widget->AddScratcher(self->mPriceRuler = self->mDataProvider->MakePriceRulerScratcher());
-                widget->AddScratcher(self->mQuoteGraph = self->mDataProvider->MakeQuoteGraphScratcher());
+                widget->AddScratcher(self->mQuoteGraph = self->mDataProvider->MakeQuoteGraphScratcher(), 0);
 
                 widget->update();
             }

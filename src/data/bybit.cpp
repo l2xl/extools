@@ -250,7 +250,7 @@ void ByBitApi::HandleConnectionData(std::weak_ptr<ByBitApi> ref, std::string&& d
                         }
                     }
                     else if (payload.find("topic") != payload.end()) {
-                        if (auto self = ref.lock()) {
+                        //if (auto self = ref.lock()) {
                             auto topic = SubscriptionTopic::Parse(payload["topic"]);
                             if (topic.Symbol()) {
                                 auto subscript_it = self->m_subscriptions.find(std::string(*topic.Symbol()));
@@ -261,6 +261,13 @@ void ByBitApi::HandleConnectionData(std::weak_ptr<ByBitApi> ref, std::string&& d
                                             subscription->Handle(topic, payload["type"].get<std::string>(), payload["data"]);
                                             self->m_data_queue.pop();
                                         }
+                                        else {
+                                            break;
+                                        }
+                                    }
+                                    else {
+                                        std::cerr << "Unhandled server data: " << self->m_data_queue.front() << std::endl;
+                                        self->m_data_queue.pop();
                                     }
                                 }
                                 else {
@@ -268,7 +275,14 @@ void ByBitApi::HandleConnectionData(std::weak_ptr<ByBitApi> ref, std::string&& d
                                     self->m_data_queue.pop();
                                 }
                             }
-                        }
+                            else {
+                                std::cerr << "Unhandled server data: " << self->m_data_queue.front() << std::endl;
+                                self->m_data_queue.pop();
+                            }
+                        // }
+                        // else {
+                        //     break;
+                        // }
                     }
                     else {
                         std::cerr << "Unhandled server data: " << self->m_data_queue.front() << std::endl;

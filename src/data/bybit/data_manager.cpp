@@ -10,7 +10,7 @@
 #include "bybit.hpp"
 #include "stream.hpp"
 #include "subscription.hpp"
-#include "quote_scratcher.hpp"
+#include "../../widget/quote_scratcher.hpp"
 #include "widget/scratch_widget.h"
 
 namespace scratcher::bybit {
@@ -32,7 +32,7 @@ void ByBitDataManager::HandleInstrumentData(const nlohmann::json &data)
     if (data["category"] != "spot") throw WrongServerData("Wrong InstrumentsInfo category: " + data["category"].get<std::string>());
     if (!data["list"].is_array())  throw WrongServerData("No or wrong InstrumentsInfo list");
 
-    for (const auto instr: data["list"]) {
+    for (const auto& instr: data["list"]) {
         if (instr["symbol"] != m_symbol) continue;
 
         if (!(instr["priceFilter"].is_object() && instr["priceFilter"].contains("tickSize"))) throw WrongServerData("No or wrong InstrumentsInfo priceFilter");
@@ -98,7 +98,7 @@ void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::str
         if (!(data.is_object() && data.contains("b") && data.contains("a"))) throw std::invalid_argument("Invalid order book data");
         if (!(data["b"].is_array() && data["a"].is_array())) throw std::invalid_argument("Invalid order book bids/asks");
 
-        std::clog << data.dump() << std::endl;
+        //std::clog << data.dump() << std::endl;
 
         if (type == "snapshot") {
             m_order_book_bids.clear();

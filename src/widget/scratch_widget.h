@@ -17,6 +17,7 @@
 #include <QResizeEvent>
 
 #include "currency.hpp"
+#include "timedef.hpp"
 #include "scratcher.hpp"
 
 namespace scratcher {
@@ -30,8 +31,6 @@ struct Rectangle
     uint64_t y_start() const { return y; }
     uint64_t y_end() const { return y + h; }
 };
-
-typedef std::chrono::utc_clock::time_point time_point;
 
 class TimeRuler : public Scratcher
 {
@@ -55,6 +54,7 @@ class DataScratchWidget : public QWidget
 {
     friend class TimeRuler;
     friend class PriceRuler;
+    friend class QuoteScratcher;
 
     Q_OBJECT
 
@@ -137,11 +137,17 @@ public:
 
     template <typename C>
     void SetMarketData(C&& newdata)
-    { m_quotes = std::forward<C>(newdata); update(); }
+    {
+        m_quotes = std::forward<C>(newdata);
+        update();
+    }
 
     template <typename C>
     void AppendMarketData(const C& newdata)
-    { for(const auto& item: newdata) m_quotes.emplace_back(item); update();}
+    {
+        for(const auto& item: newdata) m_quotes.emplace_back(item);
+        update();
+    }
 
     void ResetTimeScale()
     {

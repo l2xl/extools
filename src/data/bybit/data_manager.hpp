@@ -19,6 +19,7 @@
 #include <nlohmann/json.hpp>
 
 #include "data_provider.hpp"
+#include "currency.hpp"
 
 
 namespace scratcher {
@@ -58,13 +59,16 @@ public:
 
     static std::shared_ptr<ByBitDataManager> Create(std::string symbol, std::shared_ptr<ByBitApi> api);
 
-    const std::deque<Trade>& PublicTradeCache() const
+    currency<uint64_t> PricePoint() const override
+    { return m_price_point.value_or(currency<uint64_t>(0, 0)); }
+
+    const std::deque<Trade>& PublicTradeCache() const override
     { return m_public_trade_cache; }
 
-    const boost::container::flat_map<uint64_t, uint64_t>& Bids() const
+    const boost::container::flat_map<uint64_t, uint64_t>& Bids() const override
     { return m_order_book_bids; }
 
-    const boost::container::flat_map<uint64_t, uint64_t>& Asks() const
+    const boost::container::flat_map<uint64_t, uint64_t>& Asks() const override
     { return m_order_book_asks; }
 
     void HandleInstrumentData(const nlohmann::json& data);

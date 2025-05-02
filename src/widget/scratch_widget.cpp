@@ -106,11 +106,11 @@ void TimeRuler::Paint(DataScratchWidget& w) const
     QDateTime start;
     start.setMSecsSinceEpoch(w.GetDataViewRect().x);
 
-    auto window_msec = std::chrono::milliseconds(w.GetDataViewRect().w);
-    auto window_sec_count = std::chrono::duration_cast<std::chrono::seconds>(window_msec).count();
-    auto window_min_count = std::chrono::duration_cast<std::chrono::minutes>(window_msec).count();
-    auto window_hour_count = std::chrono::duration_cast<std::chrono::hours>(window_msec).count();
-    auto window_day_count = std::chrono::duration_cast<std::chrono::days>(window_msec).count();
+    auto window_msec = milliseconds(w.GetDataViewRect().w);
+    auto window_sec_count = duration_cast<seconds>(window_msec).count();
+    auto window_min_count = duration_cast<minutes>(window_msec).count();
+    auto window_hour_count =duration_cast<hours>(window_msec).count();
+    auto window_day_count = duration_cast<days>(window_msec).count();
 
     QPainter p(&w);
     QPen pen(Qt::gray, 1, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
@@ -125,16 +125,16 @@ void TimeRuler::Paint(DataScratchWidget& w) const
     std::vector<uint64_t> ticks;
 
     if (window_day_count >=3) {
-        ticks = w.GetTimeTicks<std::chrono::days>();
+        ticks = w.GetTimeTicks<days>();
     }
     else if (window_hour_count >= 3) {
-        ticks = w.GetTimeTicks<std::chrono::hours>();
+        ticks = w.GetTimeTicks<hours>();
     }
     else if (window_min_count >= 3) {
-        ticks = w.GetTimeTicks<std::chrono::minutes>();
+        ticks = w.GetTimeTicks<minutes>();
     }
     else if (window_sec_count >= 3) {
-        ticks = w.GetTimeTicks<std::chrono::seconds>();
+        ticks = w.GetTimeTicks<seconds>();
     }
 
     for (uint64_t tick: ticks) {
