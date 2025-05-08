@@ -53,8 +53,10 @@ class ByBitDataManager: public IDataProvider, public std::enable_shared_from_thi
 
     std::list<std::function<void()>> m_instrument_handlers;
     std::list<std::function<void()>> m_marketdata_handlers;
+
+    struct EnsurePrivate {};
 public:
-    ByBitDataManager(std::string symbol, std::shared_ptr<ByBitApi> api);
+    ByBitDataManager(std::string symbol, std::shared_ptr<ByBitApi> api, EnsurePrivate);
     ~ByBitDataManager() override = default;
 
     static std::shared_ptr<ByBitDataManager> Create(std::string symbol, std::shared_ptr<ByBitApi> api);

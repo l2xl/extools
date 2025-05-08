@@ -11,7 +11,7 @@
 
 namespace scratcher::bybit {
 
-const char* const MESSAGE_PING = R"({"op": "ping"})";
+namespace this_coro =  boost::asio::this_coro;
 
 SubscriptionTopic SubscriptionTopic::Parse(std::string topic)
 {
@@ -38,7 +38,7 @@ SubscriptionTopic SubscriptionTopic::Parse(std::string topic)
 }
 
 
-ByBitStream::ByBitStream(std::shared_ptr<ByBitApi> api, std::string spec, std::function<void(std::string&&)> callback, std::function<void(boost::system::error_code)> error_callback)
+ByBitStream::ByBitStream(std::shared_ptr<ByBitApi> api, std::string spec, std::function<void(std::string&&)> callback, std::function<void(boost::system::error_code)> error_callback, EnsurePrivate)
     : m_api(api), m_path_spec(move(spec)), m_status(status::INIT)
     , m_strand(make_strand(api->Scheduler()->io()))
     , m_heartbeat_timer(m_strand, seconds(15))
@@ -52,84 +52,91 @@ ByBitStream::~ByBitStream()
         m_websock->close(boost::beast::websocket::close_code::normal);
 }
 
-void ByBitStream::Spawn()
+std::shared_ptr<ByBitStream> ByBitStream::Create(std::shared_ptr<ByBitApi> api, std::string path_spec,
+    std::function<void(std::string &&)> callback, std::function<void(boost::system::error_code)> error_callback)
 {
-    spawn(m_strand, [ref = weak_from_this()](yield_context yield) {
-        if (auto self = ref.lock()) {
-            for (;;) {
-                boost::system::error_code ec;
-                self->DoOpenWebSocketStream(yield[ec]);
-                if (ec) {
-                    std::cerr << ec.message() << std::endl;
-                    ec.clear();
+    auto stream = std::make_shared<ByBitStream>(api, move(path_spec), callback, error_callback, EnsurePrivate());
 
-                    boost::asio::steady_timer t(self->m_strand, milliseconds(500));
-                    t.async_wait(yield[ec]);
+    co_spawn(stream->m_strand, coExecute(stream), detached);
+    co_spawn(stream->m_strand, coHeartbeat(stream), detached);
 
-                    if (!ec) continue;
-
-                    // Timer error case
-                    std::cerr << "Repeat timer error: " << ec.message() << std::endl;
-                    return;
-                }
-                break;
-            }
-            self->DoReadWebSocketStream(yield);
-        }
-    });
-    Heartbeat();
+    return stream;
 }
 
-void ByBitStream::DoOpenWebSocketStream(yield_context yield)
+awaitable<void> ByBitStream::coExecute(std::weak_ptr<ByBitStream> ref)
 {
-    auto api = m_api.lock();
-    if (!api) return;
-
-    // if (!api->m_server_time_delta) {
-    //     *yield.ec_ = xscratcher_error_code(error::no_time_sync);
-    //     return;
-    // }
-
-    if (api->m_resolved_websock_host.empty()) {
-        *yield.ec_ = xscratcher_error_code(error::no_host_name);
-        return;
-    }
-
-    if (m_websock) {
-        if (m_websock->is_open()) {
-            *yield.ec_ = xscratcher_error_code(error::already_opened);
-            return;
+    try {
+        for (;;) {
+            try {
+                if (auto self = ref.lock()) {
+                    co_await coOpenWebSocketStream(self);
+                    break;
+                }
+                co_return;
+            }
+            catch (boost::system::error_code& ec) {
+                std::cerr << ec.message() << std::endl;
+            }
+            co_await boost::asio::steady_timer(co_await this_coro::executor, milliseconds(250)).async_wait(use_awaitable);
         }
-        m_websock.reset();
+
+        if (auto self = ref.lock()) {
+            for (;;)
+                self->m_data_callback(co_await coReadWebSocketStream(self));
+        }
+        co_return;
+    }
+    catch (boost::system::error_code& ec) {
+        if (auto self = ref.lock()) {
+            self->m_status = status::STALE;
+            std::cerr << "error" << std::endl;
+            self->m_error_callback(ec);
+        }
+    }
+    catch (std::exception& e) {
+        if (auto self = ref.lock()) {
+            self->m_status = status::STALE;
+            std::cerr << "unknown error: " << e.what() << std::endl;
+        }
     }
 
-    auto websock = std::make_unique<websocket>(m_strand, api->Scheduler()->ssl());
+}
+
+awaitable<void> ByBitStream::coOpenWebSocketStream(std::shared_ptr<ByBitStream> self)
+{
+    auto api = self->m_api.lock();
+    if (!api) throw std::runtime_error("destroyed");
+
+    while (!api->m_is_websock_resolved) {
+        std::clog << "Waiting for resolve..." << std::endl;
+        co_await boost::asio::steady_timer(co_await this_coro::executor, milliseconds(250)).async_wait(use_awaitable);
+    }
+
+    if (api->m_resolved_websock_host.empty()) throw xscratcher_error_code(error::no_host_name);
+
+    if (self->m_websock) {
+        if (self->m_websock->is_open()) throw xscratcher_error_code(error::already_opened);
+        self->m_websock.reset();
+    }
+
+    auto websock = std::make_unique<websocket>(co_await this_coro::executor, api->Scheduler()->ssl());
 
     get_lowest_layer(*websock).expires_after(seconds(30));
 
-    auto connect_result = get_lowest_layer(*websock).async_connect(api->m_resolved_websock_host, yield);
-    if (*yield.ec_) {
-        std::cerr << "stream connect error: ";
-        return;
-    }
+    auto connect_result = co_await get_lowest_layer(*websock).async_connect(api->m_resolved_websock_host, use_awaitable);
 
     if (!SSL_set_tlsext_host_name(websock->next_layer().native_handle(), api->mConfig->StreamHost().c_str()))
         throw std::ios_base::failure("Failed to set SNI Hostname");
 
     get_lowest_layer(*websock).expires_after(seconds(30));
 
-    websock->next_layer().async_handshake(ssl::stream_base::client, yield);
-    if (*yield.ec_) {
-        std::cerr << "ssl handshake error: ";
-        return;
-    }
+    co_await websock->next_layer().async_handshake(ssl::stream_base::client, use_awaitable);
 
-    // Turn off the timeout on the tcp_stream, because
-    // the websocket stream has its own timeout system.
+    // Turn off the timeout on the tcp_stream, because the websocket stream has its own timeout system.
     get_lowest_layer(*websock).expires_never();
 
     // Set suggested timeout settings for the websocket
-    websock->set_option(websock::stream_base::timeout::suggested(boost::beast::role_type::client));
+    websock->set_option(ws::stream_base::timeout::suggested(boost::beast::role_type::client));
 
     websock->set_option(boost::beast::websocket::stream_base::decorator(
         [](boost::beast::websocket::request_type& req)
@@ -139,114 +146,116 @@ void ByBitStream::DoOpenWebSocketStream(yield_context yield)
 
     std::string host_port = api->mConfig->StreamHost() + ":" + std::to_string(connect_result.port());
 
-    std::clog << "WebSock handshake: " << host_port << "  " << m_path_spec << std::endl;
+    std::clog << "WebSock handshake: " << host_port << "  " << self->m_path_spec << std::endl;
 
-    websock->async_handshake(host_port, m_path_spec, yield);
-    if (*yield.ec_) {
-        std::cerr << "web-sock handshake error: " << yield.ec_->message() << std::endl;
-        return;
-    }
+    co_await websock->async_handshake(host_port, self->m_path_spec, use_awaitable);
 
-    m_websock = move(websock);
-    m_last_heartbeat = std::chrono::system_clock::now();
-    m_status = status::READY;
+    self->m_websock = move(websock);
+    self->m_last_heartbeat = std::chrono::system_clock::now();
+    self->m_status = status::READY;
 }
 
-void ByBitStream::DoReadWebSocketStream(yield_context yield)
+awaitable<std::string> ByBitStream::coReadWebSocketStream(std::shared_ptr<ByBitStream> self)
 {
     boost::beast::flat_buffer buffer;
 
     while (true) {
-        if (m_status != status::READY)
+        if (self->m_status != status::READY)
             break;
 
-        boost::system::error_code ec;
-        m_websock->async_read(buffer, yield[ec]);
-
-        if (ec) {
-            std::clog << "error" << std::endl;
-            m_status = status::STALE;
-            m_error_callback(ec);
-            break;
-        }
+        co_await self->m_websock->async_read(buffer, use_awaitable);
 
         if (buffer.size() != 0) {
             std::string data = boost::beast::buffers_to_string(buffer.data());
-            m_data_callback(move(data));
             buffer.clear();
-        }
-        else {
-                // std::clog << "web-sock wait..." << std::endl;
-                // boost::asio::steady_timer local_timer(yield.get_executor(), milliseconds(50));
-                // local_timer.async_wait(yield);
+            co_return data;;
         }
     }
 
-    if (m_status != status::STALE) {
-        status s = m_status;
+    if (self->m_status != status::STALE) {
+        status s = self->m_status;
         throw std::runtime_error("Stream has wrong status: " + std::to_string((int)s));
     }
 }
 
-void ByBitStream::Heartbeat()
+
+awaitable<void> ByBitStream::coHeartbeat(std::weak_ptr<ByBitStream> ref)
 {
-    spawn(m_strand, [ref = weak_from_this()](yield_context yield) {
+    try {
+        status cur_status = status::INIT;
         if (std::shared_ptr self = ref.lock()) {
-            boost::system::error_code ec;
             while (self->m_status == status::INIT) {
-                boost::asio::steady_timer local_timer(self->m_strand, milliseconds(50));
-                local_timer.async_wait(yield);
+                co_await boost::asio::steady_timer(co_await this_coro::executor, milliseconds(50)).async_wait(use_awaitable);
             }
-            while (self->m_status != status::STALE) {
+            cur_status = self->m_status;
+        }
+        else co_return;
+
+        while (cur_status != status::STALE) {
+            if (std::shared_ptr self = ref.lock()) {
+
                 if (std::chrono::duration_cast<seconds>(std::chrono::system_clock::now() - self->m_last_heartbeat.load()) > seconds(20)) {
                     std::ostringstream buf;
                     buf << R"({"req_id":")" << ++(self->m_req_counter) << R"(","op":"ping"})" ;
                     std::string message = buf.str();
 
                     std::clog << "web-sock ping: " << message << " ... " << std::flush;
-                    self->m_websock->async_write(boost::asio::buffer(message), yield[ec]);
-                    if (ec) {
-                        self->m_status = status::STALE;
-
-                        std::clog << "error" << std::endl;
-                        self->m_error_callback(ec);
-                        return;
-                    }
+                    co_await self->m_websock->async_write(boost::asio::buffer(message), use_awaitable);
                     std::clog << "ok" << std::endl;
+
                     self->m_last_heartbeat = std::chrono::system_clock::now();
                 }
                 else {
-                    self->m_heartbeat_timer.async_wait(yield);
+                    co_await self->m_heartbeat_timer.async_wait(use_awaitable);
                 }
             }
+            else co_return;;
         }
-    });
+    }
+    catch (boost::system::error_code& ec) {
+        if (std::shared_ptr self = ref.lock()) {
+            self->m_status = status::STALE;
+
+            std::cerr << "error" << std::endl;
+            self->m_error_callback(ec);
+        }
+    }
+    catch (std::exception& e) {
+        if (std::shared_ptr self = ref.lock()) {
+            self->m_status = status::STALE;
+            std::cerr << "unknown error: " << e.what() << std::endl;
+        }
+    }
+
 }
 
-void ByBitStream::Message(std::string message)
+awaitable<void> ByBitStream::coMessage(std::shared_ptr<ByBitStream> self, std::string message)
 {
-    spawn(m_strand, [message, ref = weak_from_this()](yield_context yield) {
-        if (auto self = ref.lock()) {
-            boost::system::error_code ec;
-
+    try {
+        if (self->m_status == status::INIT) {
+            boost::asio::steady_timer local_timer(co_await this_coro::executor, milliseconds(50));
             while (self->m_status == status::INIT) {
-                boost::asio::steady_timer local_timer(self->m_strand, milliseconds(50));
-                local_timer.async_wait(yield);
+                co_await local_timer.async_wait(use_awaitable);
             }
-
-            std::clog << "web-sock write: " << message << " ... " << std::flush;
-            self->m_websock->async_write(boost::asio::buffer(message), yield[ec]);
-            if (ec) {
-                self->m_status = status::STALE;
-
-                std::clog << "error" << std::endl;
-                self->m_error_callback(ec);
-                return;
-            }
-            std::clog << "ok" << std::endl;
-            self->m_last_heartbeat = std::chrono::system_clock::now();
         }
-    });
+
+        std::clog << "web-sock write: " << message << " ... " << std::flush;
+
+        co_await self->m_websock->async_write(boost::asio::buffer(message), use_awaitable);
+
+        std::clog << "ok" << std::endl;
+        self->m_last_heartbeat = std::chrono::system_clock::now();
+    }
+    catch (boost::system::error_code &ec) {
+        self->m_status = status::STALE;
+
+        std::cerr << "error" << std::endl;
+        self->m_error_callback(ec);
+    }
+    catch (std::exception &e) {
+        self->m_status = status::STALE;
+        std::cerr << "unknown error: " << e.what() << std::endl;
+    }
 }
 
 }

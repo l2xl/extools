@@ -18,11 +18,10 @@ using std::chrono::days;
 typedef std::chrono::utc_clock::time_point time_point;
 
 
-MainWindow::MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, std::shared_ptr<scratcher::AsioScheduler> scheduler, QWidget *parent)
+MainWindow::MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent)
     : QMainWindow(parent)
     , ui(std::make_unique<Ui::MainWindow>())
     , mMarketApi(std::move(marketApi))
-    , mScheduler(std::move(scheduler))
 {
     ui->setupUi(this);
 

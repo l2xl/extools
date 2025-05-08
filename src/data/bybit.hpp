@@ -10,6 +10,7 @@
 #include <memory>
 #include <deque>
 #include <shared_mutex>
+#include <iostream>
 
 #include <boost/container/flat_map.hpp>
 #include <boost/lockfree/spsc_queue.hpp>
@@ -92,7 +93,9 @@ private:
     std::shared_ptr<AsioScheduler> mScheduler;
 
     boost::asio::ip::tcp::resolver::results_type m_resolved_http_host;
+    std::atomic_bool m_is_http_resolved = false;
     boost::asio::ip::tcp::resolver::results_type m_resolved_websock_host;
+    std::atomic_bool m_is_websock_resolved = false;
 
     milliseconds m_request_halftrip = milliseconds(0);
     std::optional<milliseconds> m_server_time_delta;
@@ -106,17 +109,13 @@ private:
 
     void Resolve();
 
-    void Spawn(std::function<void(yield_context yield)>);
+    static boost::asio::awaitable<boost::asio::ip::tcp::resolver::results_type> coResolve(boost::asio::ip::tcp::resolver resolver, std::string host, std::string port);
 
-    nlohmann::json DoRequestServer(std::string_view request_string, yield_context &yield);
+    static boost::asio::awaitable<nlohmann::json> coRequestServer(std::shared_ptr<ByBitApi> self, std::string_view request_string);
 
-    void SpawnStream(std::shared_ptr<ByBitStream> stream, const std::string &symbol);
+    static boost::asio::awaitable<void> DoPing(std::shared_ptr<ByBitApi> self);
 
-    //void DoHttpRequest(std::shared_ptr<ByBitSubscription> subscriber, std::optional<uint32_t> tick_count, yield_context &yield);
-
-    void DoPing(yield_context &yield);
-
-    void DoGetInstrumentInfo(const std::shared_ptr<ByBitSubscription> &subscription, yield_context &yield);
+    static boost::asio::awaitable<nlohmann::json> coGetInstrumentInfo(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription);
 
     void SubscribePublicStream(const std::shared_ptr<ByBitSubscription>& subscription);
 
@@ -136,8 +135,6 @@ public:
     std::shared_ptr<ByBitSubscription> Subscribe(const std::string& symbol, std::shared_ptr<ByBitDataManager> manager);
     void Unsubscribe(const std::string& symbol);
 };
-
-
 
 }
 

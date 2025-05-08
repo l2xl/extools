@@ -30,7 +30,7 @@ find_package(OpenSSL REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
-find_package(Boost 1.83 REQUIRED COMPONENTS context coroutine)
+find_package(Boost 1.83 REQUIRED COMPONENTS context system)
 
 
 set(PROJECT_SOURCES

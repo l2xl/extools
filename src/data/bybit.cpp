@@ -24,6 +24,8 @@
 
 namespace scratcher::bybit {
 
+namespace ip = boost::asio::ip;
+
 namespace {
 
 const char* const REQ_TIME = "/v5/market/time";
@@ -45,12 +47,9 @@ std::string generateSignature(const std::string &message, const std::string &sec
 
 }
 
-
 bybit_error_category_impl bybit_error_category_impl::instance;
 
-
 //----------------------------------------------------------------------------------------------------------------------
-
 
 ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler, EnsurePrivate)
     : mConfig(move(config))
@@ -63,77 +62,49 @@ ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler
 std::shared_ptr<ByBitApi> ByBitApi::Create(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler)
 {
     auto self = std::make_shared<ByBitApi>(config, scheduler, EnsurePrivate{});
-    std::weak_ptr ref{self};
+
     self->Resolve();
 
     return self;
 }
 
 
-void ByBitApi::Spawn(std::function<void(yield_context yield)> task)
+awaitable<ip::tcp::resolver::results_type> ByBitApi::coResolve(boost::asio::ip::tcp::resolver resolver, std::string host, std::string port)
 {
-    spawn(mScheduler->io(),
-        [ref = weak_from_this(), task](yield_context yield) {
-            boost::system::error_code status;
-            while (true) {
-                try {
-                    task(yield[status]);
-                    if (status)
-                        throw status;
-
-                    return;
-                }
-                catch (boost::system::error_code &e) {
-                    std::cerr << "Error: " << e.what() << std::endl;
-                }
-                catch (std::exception& e) {
-                    std::cerr << "Error: " << e.what() << std::endl;
-                }
-
-                if (auto self = ref.lock()) {
-                    boost::system::error_code timer_error;
-                    boost::asio::steady_timer t(yield.get_executor(), milliseconds(500));
-                    t.async_wait(yield[timer_error]);
-
-                    if (timer_error) {
-                        std::cerr << "Repeat timer error: " << timer_error.message() << std::endl;
-                        throw status;
-                    }
-                }
-            }
-        },
-        [](std::exception_ptr ex) { if (ex) std::rethrow_exception(ex); });
+    std::clog << "Calling async_resolve ..." << std::endl;
+    co_return co_await resolver.async_resolve(host, port, boost::asio::use_awaitable);
 }
 
-nlohmann::json ByBitApi::DoRequestServer(std::string_view request_string, yield_context &yield)
+awaitable<nlohmann::json> ByBitApi::coRequestServer(std::shared_ptr<ByBitApi> self, std::string_view request_string)
 {
-    if (m_resolved_http_host.empty()) throw xscratcher_error_code(error::no_host_name);
+    while (!self->m_is_http_resolved) {
+        std::clog << "Waiting for resolve..." << std::endl;
+        boost::asio::steady_timer t(co_await boost::asio::this_coro::executor, milliseconds(250));
+        co_await t.async_wait(boost::asio::use_awaitable);
+    }
 
-    boost::system::error_code error;
-    boost::beast::ssl_stream<boost::beast::tcp_stream> sock(mScheduler->io(), mScheduler->ssl());
+    if (self->m_resolved_http_host.empty()) throw xscratcher_error_code(error::no_host_name);
+
+    boost::beast::ssl_stream<boost::beast::tcp_stream> sock(co_await boost::asio::this_coro::executor, self->mScheduler->ssl());
 
     auto start_time = std::chrono::utc_clock::now();
 
-    get_lowest_layer(sock).async_connect(m_resolved_http_host, yield[error]);
-    if (error) throw error;
+    co_await get_lowest_layer(sock).async_connect(self->m_resolved_http_host, boost::asio::use_awaitable);
 
-    if (!SSL_set_tlsext_host_name(sock.native_handle(), mConfig->HttpHost().c_str()))
+    if (!SSL_set_tlsext_host_name(sock.native_handle(), self->mConfig->HttpHost().c_str()))
         throw std::ios_base::failure( "Failed to set SNI Hostname");
 
-    sock.async_handshake(ssl::stream_base::client, yield[error]);
-    if (error) throw error;
+    co_await sock.async_handshake(ssl::stream_base::client, boost::asio::use_awaitable);
 
     boost::beast::http::request<boost::beast::http::string_body> req(boost::beast::http::verb::get, request_string, 11);
-    req.set(boost::beast::http::field::host, mConfig->HttpHost());
+    req.set(boost::beast::http::field::host, self->mConfig->HttpHost());
     req.prepare_payload();
 
-    boost::beast::http::async_write(sock, req, yield[error]);
-    if (error) throw error;
+    co_await boost::beast::http::async_write(sock, req, boost::asio::use_awaitable);
 
     boost::beast::flat_buffer buf;
     boost::beast::http::response<boost::beast::http::string_body> resp;
-    boost::beast::http::async_read(sock, buf, resp, yield[error]);
-    if (error) throw error;
+    co_await boost::beast::http::async_read(sock, buf, resp, boost::asio::use_awaitable);
 
     if (resp.result() == boost::beast::http::status::ok) {
         std::clog << "resp body: " << resp.body() << std::endl;
@@ -142,9 +113,9 @@ nlohmann::json ByBitApi::DoRequestServer(std::string_view request_string, yield_
         if (resp_json["retCode"] == 0) {
             auto end_time = std::chrono::utc_clock::now();
             std::chrono::utc_clock::time_point server_time = std::chrono::time_point<std::chrono::utc_clock>(milliseconds(resp_json["time"].get<long>()));
-            CalcServerTime(server_time, start_time, end_time);
+            self->CalcServerTime(server_time, start_time, end_time);
 
-            return resp_json;
+            co_return resp_json;
         }
         else {
             std::cerr << "bybit returned error: " << resp_json["retMsg"] << std::endl;
@@ -159,52 +130,44 @@ nlohmann::json ByBitApi::DoRequestServer(std::string_view request_string, yield_
 
 void ByBitApi::Resolve()
 {
-    std::weak_ptr<ByBitApi> self_ref = weak_from_this();
-
     std::clog << "Trying to resolve" << std::endl;
 
-    Spawn([self_ref](yield_context yield) {
-        if (auto self = self_ref.lock()) {
-            ip::tcp::resolver resolver(yield.get_executor()/*self->mScheduler->io()*/);
-            self->m_resolved_http_host = resolver.async_resolve(self->mConfig->HttpHost(), self->mConfig->HttpPort(), yield);
-        }
-    });
+    co_spawn(mScheduler->io(), coResolve(ip::tcp::resolver(mScheduler->io()), mConfig->HttpHost(), mConfig->HttpPort()),
+        [self = shared_from_this()](std::exception_ptr e, ip::tcp::resolver::results_type names) {
+            if (e) {
+                std::cerr << "Resolve error!!!" << std::endl;
+            }
+            self->m_resolved_http_host = move(names);
+            self->m_is_http_resolved = true;
+            std::clog << "HTTP Resolved!!!" << std::endl;
+        });
 
-    Spawn([self_ref](yield_context yield) {
-        if (auto self = self_ref.lock()) {
-            ip::tcp::resolver resolver(yield.get_executor());
-            self->m_resolved_websock_host = resolver.async_resolve(self->mConfig->StreamHost(), self->mConfig->StreamPort(), yield);
-        }
-    });
+    co_spawn(mScheduler->io(), coResolve(ip::tcp::resolver(mScheduler->io()), mConfig->StreamHost(), mConfig->StreamPort()),
+        [self = shared_from_this()](std::exception_ptr e, ip::tcp::resolver::results_type names) {
+            if (e) {
+                std::cerr << "Resolve error!!!" << std::endl;
+            }
+            self->m_resolved_websock_host = move(names);
+            self->m_is_websock_resolved = true;
+            std::clog << "WebSock Resolved!!!" << std::endl;
+        });
 }
 
-void ByBitApi::DoPing(yield_context &yield)
+awaitable<void> ByBitApi::DoPing(std::shared_ptr<ByBitApi> self)
 {
     std::clog << "Trying to connect: " << REQ_TIME << std::endl;
-    DoRequestServer(REQ_TIME, yield);
+    co_await coRequestServer(move(self), REQ_TIME);
 }
 
-void ByBitApi::DoGetInstrumentInfo(const std::shared_ptr<ByBitSubscription> &subscription, yield_context &yield)
+awaitable<nlohmann::json> ByBitApi::coGetInstrumentInfo(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription)
 {
+    std::clog << "Creating Instrument request..." << std::endl;
     std::ostringstream buf;
     buf << REQ_INSTRUMENT << "?category=spot&symbol=" << subscription->symbol;
-    auto resp = DoRequestServer(buf.str(), yield);
-
-    if (resp["result"].is_object()) {
-        subscription->dataManager->HandleInstrumentData(resp["result"]);
-    }
-    else throw WrongServerData("InstrumentsInfo response contains no \"result\" section");
+    std::clog << "Requesting instrument..." << std::endl;
+    co_return co_await coRequestServer(move(self), buf.str());
 }
 
-void ByBitApi::SpawnStream(std::shared_ptr<ByBitStream> stream, const std::string& symbol)
-{
-    stream->Spawn();
-    stream->Message(stream->SubscribeMessage(
-        std::array {
-            SubscriptionTopic{"publicTrade", symbol},
-            SubscriptionTopic{"orderbook", 50, symbol},
-        }, true));
-}
 
 void ByBitApi::SubscribePublicStream(const std::shared_ptr<ByBitSubscription>& subscription)
 {
@@ -212,20 +175,21 @@ void ByBitApi::SubscribePublicStream(const std::shared_ptr<ByBitSubscription>& s
         if (m_public_spot_stream->Status() == ByBitStream::status::STALE)
             throw std::runtime_error("Stale public stream");
 
-        m_public_spot_stream->SubscribeTopics(
-            std::array {
-                SubscriptionTopic{"publicTrade", subscription->symbol},
-                SubscriptionTopic{"orderbook", 50, subscription->symbol},
-            });
     }
     else {
-        std::weak_ptr<ByBitApi> ref = weak_from_this();
-        m_public_spot_stream = std::make_shared<ByBitStream>(shared_from_this(), STREAM_PUBLIC_SPOT,
+        auto ref = weak_from_this();
+
+        m_public_spot_stream = ByBitStream::Create(shared_from_this(), STREAM_PUBLIC_SPOT,
             [ref](std::string&& data) { HandleConnectionData(ref, move(data)); },
             [ref](boost::system::error_code ec) { HandleConnectionError(ref, ec); });
 
-        SpawnStream(m_public_spot_stream, subscription->symbol);
     }
+    m_public_spot_stream->SubscribeTopics(
+        std::array {
+            SubscriptionTopic{"publicTrade", subscription->symbol},
+            //SubscriptionTopic{"orderbook", 50, subscription->symbol},
+        }
+    );
 }
 
 void ByBitApi::HandleConnectionData(std::weak_ptr<ByBitApi> ref, std::string&& data)
@@ -320,106 +284,6 @@ void ByBitApi::CalcServerTime(time server_time, time request_time, time response
     std::clog << "server delta (ms): " << m_server_time_delta->count() << std::endl;
 }
 
-// void ByBitApi::DoHttpRequest(std::shared_ptr<ByBitSubscription> subscriber, std::optional<uint32_t> tick_count, yield_context &yield)
-// {
-    // if (!m_server_time_delta) {
-    //     *yield.ec_ = xscratcher_error_code(error::no_time_sync);
-    //     return;
-    // }
-    //
-    // long end = tick_count ? subscriber->end_timestamp(*tick_count) : std::chrono::duration_cast<milliseconds>((std::chrono::utc_clock::now() + *m_server_time_delta + m_request_halftrip).time_since_epoch()).count();
-    //
-    // std::clog << "start: " << subscriber->start_time << "\nend:   " << end << "\ninterval: " << subscriber->tick_seconds.count() << std::endl;
-    //
-    // boost::beast::ssl_stream<boost::beast::tcp_stream> sock{ mScheduler->io(), mScheduler->ssl() };
-    //
-    // //get_lowest_layer(sock).expires_after(std::chrono::seconds(10));
-    // get_lowest_layer(sock).async_connect(m_resolved_http_host, yield);
-    // if (*yield.ec_) {
-    //     std::cerr << "connect error: ";
-    //     return;
-    // }
-    //
-    // if (!SSL_set_tlsext_host_name(sock.native_handle(), mConfig->HttpHost().c_str()))
-    //     throw std::ios_base::failure( "Failed to set SNI Hostname");
-    //
-    // //get_lowest_layer(sock).expires_after(std::chrono::seconds(10));
-    // sock.async_handshake(ssl::stream_base::client, yield);
-    // if (*yield.ec_) {
-    //     std::cerr << "handshake error: ";
-    //     return;
-    // }
-    //
-    // //get_lowest_layer(sock).expires_never();
-    //
-    // // Set a decorator to change the User-Agent of the handshake
-    // // sock.set_option(websock::stream_base::decorator(
-    // //     [](websock::request_type& req) {
-    // //         req.set(boost::beast::http::field::user_agent, std::string(BOOST_BEAST_VERSION_STRING) + " websocket-client-async-ssl");
-    // //     }));
-    //
-    // std::ostringstream target;
-    // target << REQ_KLINE << '?' << "category=spot&symbol=" << subscriber->symbol <<"&interval=" << std::chrono::duration_cast<std::chrono::minutes>(subscriber->tick_seconds).count() << "&start=" << subscriber->start_timestamp() << "&end=" << end;
-    // std::string target_str = target.str();
-    //
-    // std::clog << "req params: " << target_str << std::endl;
-    //
-    // boost::beast::http::request<boost::beast::http::string_body> req(boost::beast::http::verb::get, target_str, 11);
-    // req.set(boost::beast::http::field::host, mConfig->HttpHost());
-    // req.prepare_payload();
-    //
-    // std::clog << "request: " << req << std::endl;
-    // boost::beast::http::async_write(sock, req, yield);
-    // if (*yield.ec_) {
-    //     std::cerr << "request error: ";
-    //     return;
-    // }
-    //
-    // boost::beast::flat_buffer buf;
-    // boost::beast::http::response<boost::beast::http::string_body> resp;
-    // boost::beast::http::read(sock, buf, resp);
-    //
-    // std::clog << "response: " << resp.body() << std::endl;
-
-    // boost::asio::post([=, this] {
-    //
-    //     time_t start = subscriber->start_time;
-    //     time_t end = tick_count ? (start + *tick_count * std::chrono::milliseconds(subscriber->tick_seconds).count()) : std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    //     time_t mins = subscriber->tick_seconds.count();
-    //
-    //     std::clog << "start: " << start << "\nend:   " << end << "\ninterval: " << mins << std::endl;
-    //
-    //     websock::stream<boost::beast::ssl_stream<boost::beast::tcp_stream>> sock{ io_ctx, ssl_ctx };
-    //
-    //     get_lowest_layer(sock).expires_after(std::chrono::seconds(10));
-    //     get_lowest_layer(sock).connect(m_resolved_host);
-    //
-    //     if (!SSL_set_tlsext_host_name(sock.next_layer().native_handle(), m_host.c_str()))
-    //         throw std::ios_base::failure( "Failed to set SNI Hostname");
-    //
-    //     get_lowest_layer(sock).expires_after(std::chrono::seconds(10));
-    //     sock.next_layer().handshake(ssl::stream_base::client);
-    //
-    //     get_lowest_layer(sock).expires_never();
-    //
-    //     // Set suggested timeout settings for the websocket
-    //     sock.set_option(websock::stream_base::timeout::suggested(boost::beast::role_type::client));
-    //
-    //     // Set a decorator to change the User-Agent of the handshake
-    //     sock.set_option(websock::stream_base::decorator(
-    //         [](websock::request_type& req) {
-    //             req.set(boost::beast::http::field::user_agent, std::string(BOOST_BEAST_VERSION_STRING) + " websocket-client-async-ssl");
-    //         }));
-    //
-    //     // Perform the websocket handshake
-    //     sock.handshake(m_host + ":" + m_port, REQ_KLINE/*"/"*/);
-    //     // sock.write(boost::beast::net::buffer(R"({"category":"spot", "symbol":"BTCUSDT", "interval":"1", "start":"", "end": ""})"));
-    //     //
-    //
-    // });
-
-//}
-
 
 std::shared_ptr<ByBitSubscription> ByBitApi::Subscribe(const std::string& symbol, std::shared_ptr<ByBitDataManager> dataManager)
 {
@@ -441,12 +305,19 @@ std::shared_ptr<ByBitSubscription> ByBitApi::Subscribe(const std::string& symbol
         }
     }
 
-    Spawn([subscription, ref=weak_from_this()](yield_context yield) {
-        if (auto self = ref.lock()) {
-            self->DoGetInstrumentInfo(subscription, yield);
-            self->SubscribePublicStream(subscription);
-        }
-    });
+    co_spawn(mScheduler->io(), coGetInstrumentInfo(shared_from_this(), subscription),
+        [self = shared_from_this(), subscription](std::exception_ptr e, nlohmann::json resp) {
+            if (e) {
+                std::cerr << "Instrument error!!!" << std::endl;
+            }
+            if (resp["result"].is_object()) {
+                subscription->dataManager->HandleInstrumentData(resp["result"]);
+                std::clog << "Instrument data received" << std::endl;
+            }
+            else std::cerr << "InstrumentsInfo response contains no \"result\" section" << std::endl;
+        });
+
+    SubscribePublicStream(subscription);
 
     return subscription;
 }

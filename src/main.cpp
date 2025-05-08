@@ -22,7 +22,7 @@ int main(int argc, char *argv[])
 
         auto bybit = scratcher::bybit::ByBitApi::Create(config, scheduler);
 
-        MainWindow w(bybit, scheduler);
+        MainWindow w(bybit);
         w.show();
         return a.exec();
     }

@@ -15,14 +15,14 @@
 
 namespace scratcher::bybit {
 
-ByBitDataManager::ByBitDataManager(std::string symbol, std::shared_ptr<ByBitApi> api)
+ByBitDataManager::ByBitDataManager(std::string symbol, std::shared_ptr<ByBitApi> api, EnsurePrivate)
     : m_symbol(move(symbol)), mApi(move(api))
 {
 }
 
 std::shared_ptr<ByBitDataManager> ByBitDataManager::Create(std::string symbol, std::shared_ptr<ByBitApi> api)
 {
-    auto collector = std::make_shared<ByBitDataManager>(symbol, api);
+    auto collector = std::make_shared<ByBitDataManager>(symbol, api, EnsurePrivate());
     auto subscription = api->Subscribe(symbol, collector);
     return collector;
 }

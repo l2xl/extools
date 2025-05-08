@@ -19,11 +19,9 @@
 
 namespace scratcher::bybit {
 
-namespace ip = boost::asio::ip;
-namespace websock = boost::beast::websocket;
+namespace ws = boost::beast::websocket;
 
-using boost::asio::io_context;
-using boost::asio::yield_context;
+using boost::asio::awaitable;
 
 class ByBitApi;
 
@@ -76,7 +74,7 @@ public:
     enum class status {INIT, READY, STALE};
 private:
 
-    using websocket = websock::stream<boost::beast::ssl_stream<boost::beast::tcp_stream>>;
+    using websocket = ws::stream<boost::beast::ssl_stream<boost::beast::tcp_stream>>;
 
     friend class ByBitApi;
 
@@ -94,11 +92,10 @@ private:
     std::function<void(std::string&&)> m_data_callback;
     std::function<void(boost::system::error_code)> m_error_callback;
 
-    void Heartbeat();
-    void DoOpenWebSocketStream(yield_context yield);
-    void DoReadWebSocketStream(yield_context yield);
-
-    void Message(std::string message);
+    static awaitable<void> coHeartbeat(std::weak_ptr<ByBitStream> ref);
+    static awaitable<void> coOpenWebSocketStream(std::shared_ptr<ByBitStream>);
+    static awaitable<std::string> coReadWebSocketStream(std::shared_ptr<ByBitStream>);
+    static awaitable<void> coMessage(std::shared_ptr<ByBitStream> self, std::string message);
 
     std::string SubscribeMessage(const auto& topics, bool subscribe)
     {
@@ -111,20 +108,23 @@ private:
         return buf.str();
     }
 
+    struct EnsurePrivate {};
+
 public:
-    ByBitStream(std::shared_ptr<ByBitApi> api, std::string spec, std::function<void(std::string&&)> data_callback, std::function<void(boost::system::error_code)> error_callback);
+    ByBitStream(std::shared_ptr<ByBitApi> api, std::string spec, std::function<void(std::string&&)> data_callback, std::function<void(boost::system::error_code)> error_callback, EnsurePrivate);
     ~ByBitStream();
 
-//    static void Create(std::shared_ptr<ByBitApi> api, std::string path_spec, std::string symbol, std::function<void(std::string&&)> callback, std::function<void(boost::system::error_code)> error_callback);
-    void Spawn();
+    static std::shared_ptr<ByBitStream> Create(std::shared_ptr<ByBitApi> api, std::string path_spec, std::function<void(std::string&&)> callback, std::function<void(boost::system::error_code)> error_callback);
+    static awaitable<void> coExecute(std::weak_ptr<ByBitStream> ref);
 
     status Status() const
     { return m_status; }
 
     void SubscribeTopics(const auto& topics)
-    { Message(SubscribeMessage(topics, true)); }
+    { co_spawn(m_strand, coMessage(shared_from_this(), SubscribeMessage(topics, true)), boost::asio::detached); }
+
     void UnsubscribeTopics(auto topics)
-    { Message(SubscribeMessage(topics, false)); }
+    { co_spawn(m_strand, coMessage(shared_from_this(), SubscribeMessage(topics, false)), boost::asio::detached); }
 };
 
 }

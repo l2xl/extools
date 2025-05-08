@@ -33,14 +33,13 @@ class MainWindow : public QMainWindow
     Q_OBJECT
     std::unique_ptr<Ui::MainWindow> ui;
 
-    std::shared_ptr<scratcher::AsioScheduler> mScheduler;
     std::shared_ptr<scratcher::bybit::ByBitApi> mMarketApi;
     std::shared_ptr<scratcher::MarketController> mMarketViewController;
     std::shared_ptr<scratcher::bybit::ByBitDataManager> mMarketData;
     std::shared_ptr<scratcher::DataScratchWidget> mMarketView;
 
 public:
-    MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, std::shared_ptr<scratcher::AsioScheduler> scheduler, QWidget *parent = nullptr);
+    MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent = nullptr);
     ~MainWindow() override;
 
 

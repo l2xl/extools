@@ -38,7 +38,8 @@ inline boost::system::error_code xscratcher_error_code(error e)
 { return boost::system::error_code(static_cast<int>(e), xscratcher_error_category());}
 
 using boost::asio::io_context;
-using boost::asio::yield_context;
+using boost::asio::use_awaitable;
+using boost::asio::detached;
 
 namespace ssl = boost::asio::ssl;
 
