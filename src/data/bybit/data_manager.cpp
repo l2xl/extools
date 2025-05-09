@@ -66,7 +66,7 @@ void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::str
     if (!IsReadyHandleData()) throw std::runtime_error("Instrument configuration is not ready");
 
     if (topic.Title() == "publicTrade") {
-        if (!data.is_array()) throw std::invalid_argument("Invalid pablic trade data");
+        if (!data.is_array()) throw std::invalid_argument("Invalid public trade data");
         if (type != "snapshot") throw std::invalid_argument("Unknown public trade message type: " + type);
         for (const auto& t: data) {
             if (!(t.contains("S") && t.contains("T") && t.contains("i") && t.contains("p") && t.contains("v"))) throw std::invalid_argument("Invalid data");
@@ -91,7 +91,10 @@ void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::str
 
             std::clog << side_str << ": " << trade_time << ", price (points): " << price.raw() << ", volume (points): " << value.raw() << std::endl;
 
-            m_public_trade_cache.emplace_back(move(id), trade_time, price.raw(), value.raw(), side);
+            {
+                std::unique_lock lock(m_pubtrade_mutex);
+                m_pubtrade_cache.emplace_back(move(id), trade_time, price.raw(), value.raw(), side);
+            }
         }
     }
     else if (topic.Title() == "orderbook"){

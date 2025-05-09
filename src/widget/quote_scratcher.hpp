@@ -14,8 +14,11 @@ namespace scratcher {
 
 class QuoteScratcher: public Scratcher {
     std::shared_ptr<const IDataProvider> mDataManager;
+    mutable IDataProvider::pubtrade_cache_t::const_iterator m_first_shown_trade_it;
 public:
-    explicit QuoteScratcher(std::shared_ptr<const IDataProvider> dataManager) : mDataManager(move(dataManager)) {}
+    explicit QuoteScratcher(std::shared_ptr<const IDataProvider> dataManager)
+        : mDataManager(move(dataManager))
+        , m_first_shown_trade_it(mDataManager->PublicTradeCache().end()){}
     ~QuoteScratcher() override= default;
 
     void BeforePaint(DataScratchWidget& w) const override;
