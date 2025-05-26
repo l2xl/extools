@@ -1,8 +1,15 @@
 // Scratcher project
 // Copyright (c) 2025 l2xl (l2xl/at/proton.me)
-// Distributed under the MIT software license, see the accompanying
-// file LICENSE or https://opensource.org/license/mit
+// Distributed under the Intellectual Property Reserve License (IPRL)
+// -----BEGIN PGP PUBLIC KEY BLOCK-----
 //
+// mDMEYdxcVRYJKwYBBAHaRw8BAQdAfacBVThCP5QDPEgSbSIudtpJS4Y4Imm5dzaN
+// lM1HTem0IkwyIFhsIChsMnhsKSA8bDJ4bEBwcm90b25tYWlsLmNvbT6IkAQTFggA
+// OBYhBKRCfUyWnduCkisNl+WRcOaCK79JBQJh3FxVAhsDBQsJCAcCBhUKCQgLAgQW
+// AgMBAh4BAheAAAoJEOWRcOaCK79JDl8A/0/AjYVbAURZJXP3tHRgZyYyN9txT6mW
+// 0bYCcOf0rZ4NAQDoFX4dytPDvcjV7ovSQJ6dzvIoaRbKWGbHRCufrm5QBA==
+// =KKu7
+// -----END PGP PUBLIC KEY BLOCK-----
 
 #ifndef DATA_PROVIDER_HPP
 #define DATA_PROVIDER_HPP
@@ -43,6 +50,9 @@ struct IDataProvider {
     typedef std::deque<Trade> pubtrade_cache_t;
 
     virtual ~IDataProvider() = default;
+
+    virtual const std::string& Symbol() const = 0;
+
     virtual void AddInsctrumentDataUpdateHandler(std::function<void()> h) = 0;
     virtual void AddMarketDataUpdateHandler(std::function<void()> h) = 0;
 

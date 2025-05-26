@@ -1,4 +1,17 @@
-cmake_minimum_required(VERSION 3.5)
+# Scratcher project
+# Copyright (c) 2025 l2xl (l2xl/at/proton.me)
+# Distributed under the Intellectual Property Reserve License (IPRL)
+# -----BEGIN PGP PUBLIC KEY BLOCK-----
+#
+# mDMEYdxcVRYJKwYBBAHaRw8BAQdAfacBVThCP5QDPEgSbSIudtpJS4Y4Imm5dzaN
+# lM1HTem0IkwyIFhsIChsMnhsKSA8bDJ4bEBwcm90b25tYWlsLmNvbT6IkAQTFggA
+# OBYhBKRCfUyWnduCkisNl+WRcOaCK79JBQJh3FxVAhsDBQsJCAcCBhUKCQgLAgQW
+# AgMBAh4BAheAAAoJEOWRcOaCK79JDl8A/0/AjYVbAURZJXP3tHRgZyYyN9txT6mW
+# 0bYCcOf0rZ4NAQDoFX4dytPDvcjV7ovSQJ6dzvIoaRbKWGbHRCufrm5QBA==
+# =KKu7
+# -----END PGP PUBLIC KEY BLOCK-----
+
+cmake_minimum_required(VERSION 3.21)
 
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 OLD)
@@ -24,13 +37,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #        GITHUB_REPOSITORY "qt/qt5")
 #CPMAddPackage("gh:qt/qt5@6.9.0")
 
-find_package(Qt6 6.9.0 CONFIG REQUIRED COMPONENTS Core Widgets Quick PATHS /usr/local/Qt-6.9.0)
+find_package(Qt6 6 CONFIG REQUIRED COMPONENTS Core Widgets Svg)
 
 find_package(OpenSSL REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
 find_package(Boost 1.83 REQUIRED COMPONENTS context system)
+
+# Add Qlementine style library
+#CPMAddPackage(
+#    NAME Qlementine
+#    GITHUB_REPOSITORY oclero/qlementine
+#    GIT_TAG v1.2.2
+#    OPTIONS
+#        "QLEMENTINE_BUILD_EXAMPLES OFF"
+#        "QLEMENTINE_BUILD_TESTS OFF"
+#)
 
 
 set(PROJECT_SOURCES
@@ -42,6 +65,8 @@ set(PROJECT_SOURCES
         src/app/mainwindow.ui
         src/widget/scratch_widget.cpp
         src/widget/scratch_widget.h
+        src/widget/content_frame.h
+        src/widget/content_frame.cpp
         src/data/bybit.cpp
         src/data/bybit.hpp
         src/data/scheduler.cpp
@@ -72,12 +97,12 @@ include_directories(
         src/common
         src/app
         src/data
-        ${Boost_INCLUDE_DIRS}
 )
 
-target_link_libraries(exscratcher PRIVATE Qt6::Widgets Qt6::Quick)
+target_link_libraries(exscratcher PRIVATE Qt6::Widgets Qt6::Svg)
 target_link_libraries(exscratcher PRIVATE ${Boost_LIBRARIES})
 target_link_libraries(exscratcher PRIVATE OpenSSL::SSL)
+#target_link_libraries(exscratcher PRIVATE qlementine)
 
 include(GNUInstallDirs)
 install(TARGETS exscratcher

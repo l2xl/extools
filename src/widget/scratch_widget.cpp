@@ -30,7 +30,13 @@
 namespace scratcher {
 DataScratchWidget::DataScratchWidget(QWidget *parent)
     : QWidget{parent}
-{}
+{
+    // Ensure this widget uses the application's palette
+    setPalette(QApplication::palette());
+    
+    // Make sure this widget doesn't have a custom background
+    setAutoFillBackground(true);
+}
 
 void DataScratchWidget::SetDataViewRect(const Rectangle& rect)
 {
