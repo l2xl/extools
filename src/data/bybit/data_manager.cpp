@@ -23,7 +23,7 @@ ByBitDataManager::ByBitDataManager(std::string symbol, std::shared_ptr<ByBitApi>
 std::shared_ptr<ByBitDataManager> ByBitDataManager::Create(std::string symbol, std::shared_ptr<ByBitApi> api)
 {
     auto collector = std::make_shared<ByBitDataManager>(symbol, api, EnsurePrivate());
-    auto subscription = api->Subscribe(symbol, collector);
+    collector->mSubscription = api->Subscribe(symbol, collector);
     return collector;
 }
 
@@ -59,6 +59,17 @@ void ByBitDataManager::HandleInstrumentData(const nlohmann::json &data)
 
     for (const auto& h: m_instrument_handlers) h();
 }
+
+void ByBitDataManager::HandlePublicTrades(const nlohmann::json &data)
+{
+    if (data["category"] != "spot") throw WrongServerData("Wrong InstrumentsInfo category: " + data["category"].get<std::string>());
+    if (!data["list"].is_array())  throw WrongServerData("No or wrong InstrumentsInfo list");
+
+    for (const auto& instr: data["list"]) {
+        if (instr["symbol"] != m_symbol) continue;
+    }
+}
+
 
 void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& data)
 {

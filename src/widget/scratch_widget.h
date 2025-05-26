@@ -1,8 +1,15 @@
 // Scratcher project
 // Copyright (c) 2025 l2xl (l2xl/at/proton.me)
-// Distributed under the MIT software license, see the accompanying
-// file LICENSE or https://opensource.org/license/mit
+// Distributed under the Intellectual Property Reserve License (IPRL)
+// -----BEGIN PGP PUBLIC KEY BLOCK-----
 //
+// mDMEYdxcVRYJKwYBBAHaRw8BAQdAfacBVThCP5QDPEgSbSIudtpJS4Y4Imm5dzaN
+// lM1HTem0IkwyIFhsIChsMnhsKSA8bDJ4bEBwcm90b25tYWlsLmNvbT6IkAQTFggA
+// OBYhBKRCfUyWnduCkisNl+WRcOaCK79JBQJh3FxVAhsDBQsJCAcCBhUKCQgLAgQW
+// AgMBAh4BAheAAAoJEOWRcOaCK79JDl8A/0/AjYVbAURZJXP3tHRgZyYyN9txT6mW
+// 0bYCcOf0rZ4NAQDoFX4dytPDvcjV7ovSQJ6dzvIoaRbKWGbHRCufrm5QBA==
+// =KKu7
+// -----END PGP PUBLIC KEY BLOCK-----
 
 #ifndef MARKETWIDGET_H
 #define MARKETWIDGET_H
@@ -36,8 +43,9 @@ class TimeRuler : public Scratcher
 {
 public:
     ~TimeRuler() override = default;
-    void BeforePaint(DataScratchWidget &widget) const;
-    void Paint(DataScratchWidget &widget) const;
+    void Resize(DataScratchWidget &widget) const override;
+    void BeforePaint(DataScratchWidget &widget) const  override {}
+    void Paint(DataScratchWidget &widget) const override;
 };
 
 class PriceRuler : public Scratcher
@@ -46,8 +54,9 @@ class PriceRuler : public Scratcher
 public:
     PriceRuler(currency<uint64_t> p) : point(p) {}
     ~PriceRuler() override = default;
-    void BeforePaint(DataScratchWidget &widget) const;
-    void Paint(DataScratchWidget &widget) const;
+    void Resize(DataScratchWidget &widget) const override;
+    void BeforePaint(DataScratchWidget &widget) const override {}
+    void Paint(DataScratchWidget &widget) const override;
 };
 
 class DataScratchWidget : public QWidget
@@ -58,48 +67,32 @@ class DataScratchWidget : public QWidget
 
     Q_OBJECT
 
-    // double m_start = -1;
-    // double m_end = -1;
-    //
-    // double m_min;
-    // double m_max;
-
-    //Rectangle mDataField;
     Rectangle mDataViewRect;
-    QRect mClientRect;
+    QRect mClientRect {0,0,0,0};
 
-    bool forceScale = false;
     double mXScale = 1.0;
     double mYScale = 1.0;
 
+    std::list<std::function<void(DataScratchWidget& )>> m_data_view_listeners;
+
     std::deque<std::shared_ptr<Scratcher>> mScratchers;
     std::shared_mutex mScratcherMutex;
-
-    std::deque<std::array<double, 4>> m_quotes;
-
-    QRect getQuotesArea() const;
-
-    void calculateResetTimeScale();
-    void calculateResetQuoteScale();
-    void drawQuoteChart(QPainter& painter);
 
     QRect& clientRect() { return mClientRect; }
 
 protected:
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+
 public:
     explicit DataScratchWidget(QWidget *parent = nullptr);
 
-    //void SetDataFieldRect(const Rectangle& rect);
-
-    //const Rectangle& GetDataFieldRect() const { return mDataField; }
-
     void SetDataViewRect(const Rectangle& rect);
-
     const Rectangle& GetDataViewRect() const { return mDataViewRect; }
-
     const QRect& GetClientRect() const { return mClientRect; }
+
+    void AddDataViewChangeListener(std::function<void(DataScratchWidget& w)> handler)
+    { m_data_view_listeners.emplace_back(handler); }
 
     int DataXToWidgetX(uint64_t x) const;
     int DataYToWidgetY(uint64_t x) const;
@@ -130,47 +123,7 @@ public:
         }
         return ticks;
     }
-
-
-
-
-
-    template <typename C>
-    void SetMarketData(C&& newdata)
-    {
-        m_quotes = std::forward<C>(newdata);
-        update();
-    }
-
-    template <typename C>
-    void AppendMarketData(const C& newdata)
-    {
-        for(const auto& item: newdata) m_quotes.emplace_back(item);
-        update();
-    }
-
-    void ResetTimeScale()
-    {
-        calculateResetTimeScale();
-        if (isVisible())
-            update();
-    }
-    void ResetQuoteScale()
-    {
-        calculateResetQuoteScale();
-        if (isVisible())
-            update();
-    }
-    void ResetScale()
-    {
-        calculateResetTimeScale();
-        calculateResetQuoteScale();
-        if (isVisible())
-            update();
-    }
-
-    signals:
-    };
+};
 
 }
 

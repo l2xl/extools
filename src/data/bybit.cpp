@@ -30,6 +30,7 @@ namespace {
 
 const char* const REQ_TIME = "/v5/market/time";
 const char* const REQ_INSTRUMENT = "/v5/market/instruments-info";
+const char* const REQ_PUBLIC_TRADES = "/v5/market/recent-trade";
 const char* const REQ_KLINE = "/v5/market/kline";
 
 const char* const STREAM_PUBLIC_SPOT = "/v5/public/spot";
@@ -167,6 +168,16 @@ awaitable<nlohmann::json> ByBitApi::coGetInstrumentInfo(std::shared_ptr<ByBitApi
     std::clog << "Requesting instrument..." << std::endl;
     co_return co_await coRequestServer(move(self), buf.str());
 }
+
+awaitable<nlohmann::json> ByBitApi::coGetPublicTradeHistory(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription, time_point start, time_point end)
+{
+    std::clog << "Creating Recent Trades request..." << std::endl;
+    std::ostringstream buf;
+    buf << REQ_PUBLIC_TRADES << "?category=spot&symbol=" << subscription->symbol;
+    std::clog << "Requesting Recent Trades..." << std::endl;
+    co_return co_await coRequestServer(move(self), buf.str());
+}
+
 
 
 void ByBitApi::SubscribePublicStream(const std::shared_ptr<ByBitSubscription>& subscription)
@@ -344,5 +355,19 @@ void ByBitApi::Unsubscribe(const std::string& symbol)
     }
 }
 
-
+void ByBitApi::RequestRecentPublicTrades(std::shared_ptr<ByBitSubscription> subscription, std::shared_ptr<ByBitDataManager> manager,
+    time_point start, time_point end)
+{
+    co_spawn(mScheduler->io(), coGetPublicTradeHistory(shared_from_this(), subscription, start, end),
+        [self = shared_from_this(), subscription](std::exception_ptr e, nlohmann::json resp) {
+            if (e) {
+                std::cerr << "Instrument error!!!" << std::endl;
+            }
+            if (resp["result"].is_object()) {
+                subscription->dataManager->HandlePublicTrades(resp["result"]);
+                std::clog << "Public Trades  received" << std::endl;
+            }
+            else std::cerr << "InstrumentsInfo response contains no \"result\" section" << std::endl;
+        });
+}
 }

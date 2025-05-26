@@ -1,8 +1,15 @@
 // Scratcher project
 // Copyright (c) 2025 l2xl (l2xl/at/proton.me)
-// Distributed under the MIT software license, see the accompanying
-// file LICENSE or https://opensource.org/license/mit
+// Distributed under the Intellectual Property Reserve License (IPRL)
+// -----BEGIN PGP PUBLIC KEY BLOCK-----
 //
+// mDMEYdxcVRYJKwYBBAHaRw8BAQdAfacBVThCP5QDPEgSbSIudtpJS4Y4Imm5dzaN
+// lM1HTem0IkwyIFhsIChsMnhsKSA8bDJ4bEBwcm90b25tYWlsLmNvbT6IkAQTFggA
+// OBYhBKRCfUyWnduCkisNl+WRcOaCK79JBQJh3FxVAhsDBQsJCAcCBhUKCQgLAgQW
+// AgMBAh4BAheAAAoJEOWRcOaCK79JDl8A/0/AjYVbAURZJXP3tHRgZyYyN9txT6mW
+// 0bYCcOf0rZ4NAQDoFX4dytPDvcjV7ovSQJ6dzvIoaRbKWGbHRCufrm5QBA==
+// =KKu7
+// -----END PGP PUBLIC KEY BLOCK-----
 
 #include "scratch_widget.h"
 
@@ -25,25 +32,11 @@ DataScratchWidget::DataScratchWidget(QWidget *parent)
     : QWidget{parent}
 {}
 
-// void DataScratchWidget::SetDataFieldRect(const Rectangle& rect)
-// {
-//     mDataField = rect;
-//
-//     if (mDataViewRect.x_end() <= mDataField.x_start())
-//         mDataViewRect.x = mDataField.x_start();
-//     if (mDataViewRect.x_start() >= mDataField.x_end())
-//         mDataViewRect.x = mDataField.x_end() - mDataViewRect.w;
-//     if (mDataViewRect.y_start() >= mDataField.y_end())
-//         mDataViewRect.y = mDataField.y_end() - mDataViewRect.h;
-//     if (mDataViewRect.y_end() <= mDataField.y_start())
-//         mDataViewRect.h = mDataField.y_start();
-//     //
-//     // if (isVisible())
-//     //     update();
-// }
-
 void DataScratchWidget::SetDataViewRect(const Rectangle& rect)
 {
+    std::clog << "SetDataViewRect ^^^^^^^^^^^^" << std::endl;
+
+
     mDataViewRect = rect;
 
     if (clientRect().width()) mXScale = static_cast<double>(mDataViewRect.w) / clientRect().width();
@@ -80,25 +73,11 @@ void DataScratchWidget::RemoveScratcher(const std::shared_ptr<Scratcher> &scratc
     if (it != mScratchers.end()) mScratchers.erase(it);
 }
 
-namespace {
-
-const double tick_margin_k = 0.25;
-const int window_margin = 20;
-
-}
-
-void TimeRuler::BeforePaint(DataScratchWidget &w) const
+void TimeRuler::Resize(DataScratchWidget &w) const
 {
     auto text_height = w.fontMetrics().height();
     const auto& r = w.GetClientRect();
     w.clientRect().setCoords(r.left(), r.top(), r.right(), w.rect().bottom() - text_height*2 - text_height/2 - 1);
-
-    if (w.forceScale) {
-        w.mDataViewRect.h = w.clientRect().height() * w.mYScale;
-    }
-    else {
-        w.mYScale =  static_cast<double>(w.mDataViewRect.h) / w.clientRect().height();
-    }
 }
 
 void TimeRuler::Paint(DataScratchWidget& w) const
@@ -149,7 +128,7 @@ void TimeRuler::Paint(DataScratchWidget& w) const
     p.drawText(QPoint{5, w.size().height() - 1}, label);
 }
 
-void PriceRuler::BeforePaint(DataScratchWidget &w) const
+void PriceRuler::Resize(DataScratchWidget &w) const
 {
     currency<uint64_t> max_price = point;
     max_price.set_raw(w.GetDataViewRect().y_end());
@@ -162,16 +141,6 @@ void PriceRuler::BeforePaint(DataScratchWidget &w) const
 
     QRect r = w.GetClientRect();
     w.clientRect().setCoords(r.left(), r.top(), w.rect().right() - label_width - char_width*2 - 1, r.bottom());
-
-    if (w.forceScale) {
-        uint64_t old_end = w.mDataViewRect.x_end();
-
-        w.mDataViewRect.w = w.clientRect().width() * w.mXScale;
-        w.mDataViewRect.x = old_end - w.mDataViewRect.w;
-    }
-    else {
-        w.mXScale = static_cast<double>(w.mDataViewRect.w) / w.clientRect().width();
-    }
 }
 
 void PriceRuler::Paint(DataScratchWidget &w) const
@@ -214,91 +183,15 @@ void PriceRuler::Paint(DataScratchWidget &w) const
     p.drawLine(QPoint(axis_x, rect.top()), QPoint(axis_x, rect.bottom()));
 }
 
-QRect DataScratchWidget::getQuotesArea() const
-{
-    QRect r(rect());
-    return QRect(r.x() + window_margin, r.y() + window_margin, r.width() - window_margin*2, r.height() - window_margin * 2);
-}
-
-
-void DataScratchWidget::calculateResetTimeScale()
-{
-    // const static int def_tick_width = 10;
-    // const QRect area = getQuotesArea();
-    //
-    // if (def_tick_width * m_quotes.size() > area.width()) {
-    //     m_start = m_quotes.size() - (area.width() / def_tick_width);
-    //     m_end = m_quotes.size() + 1;
-    // }
-    // else {
-    //     m_start = 0;
-    //     m_end = area.width() / def_tick_width;
-    // }
-}
-
-void DataScratchWidget::calculateResetQuoteScale()
-{
-    // if (m_start == -1 || m_end == -1) throw std::runtime_error("No time scale calculated");
-    //
-    // double min_quote = std::numeric_limits<double>::max();
-    // double max_quote = std::numeric_limits<double>::min();
-    //
-    // int range = std::ceil(m_end) - static_cast<size_t>(m_start);
-    // auto end = (m_start + range) > m_quotes.size() ? m_quotes.end() : m_quotes.begin() + range;
-    //
-    // for (const auto& tick: std::ranges::subrange(m_quotes.begin() + static_cast<size_t>(m_start), end)) {
-    //     min_quote = std::min(min_quote, std::min(tick[1], tick[2]));
-    //     max_quote = std::max(max_quote, std::max(tick[1], tick[2]));
-    // }
-    //
-    // m_min = min_quote;
-    // m_max = max_quote;
-}
-
-void DataScratchWidget::drawQuoteChart(QPainter& painter)
-{
-    // size_t start_idx = std::floor(m_start);
-    // size_t end_idx = std::ceil(m_end);
-    //
-    // auto area = getQuotesArea();
-    // double tick_width = width() / (m_end - m_start);
-    // double tick_offset_x = area.x() + (m_start - static_cast<double>(start_idx)) * tick_width;
-    //
-    // QPen redPen(Qt::red, 0, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
-    // QPen greenPen(Qt::green, 0, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
-    //
-    // for(const auto [idx, tick]: std::views::zip(std::views::iota(start_idx, end_idx), m_quotes)) {
-    //
-    //     int y0 = area.x() + area.height() * (1 - (tick[0] - m_min) / (m_max - m_min));
-    //     int y1 = area.x() + area.height() * (1 - (tick[1] - m_min) / (m_max - m_min));
-    //     int y2 = area.x() + area.height() * (1 - (tick[2] - m_min) / (m_max - m_min));
-    //     int y3 = area.x() + area.height() * (1 - (tick[3] - m_min) / (m_max - m_min));
-    //
-    //     int x0 = tick_offset_x;
-    //     int x1 = tick_offset_x + (tick_width * (1 - tick_margin_k) / 2);
-    //     int x2 = tick_offset_x + (tick_width * (1 - tick_margin_k));
-    //
-    //     painter.setPen(tick[0] <= tick[3] ? greenPen : redPen);
-    //     painter.setBrush(tick[0] <= tick[3] ? Qt::green : Qt::red);
-    //     painter.drawLine(QPoint(x1, y1), QPoint(x1, y2-1));
-    //     painter.drawRect(QRect(QPoint(x0, std::min(y0, y3)), QPoint(x2-1, std::max(y0, y3)-1)));
-    //
-    //     tick_offset_x += tick_width;
-    // }
-}
-
-
 void DataScratchWidget::paintEvent(QPaintEvent *event)
 {
-    mClientRect = rect();
-
+    std::clog << "Paint event **********" << std::endl;
     {
         std::shared_lock lock(mScratcherMutex);
 
         for (const auto &scr : mScratchers) {
             scr->BeforePaint(*this);
         }
-        forceScale = false;
 
         for (const auto &scr : mScratchers) {
             scr->Paint(*this);
@@ -316,9 +209,35 @@ void DataScratchWidget::paintEvent(QPaintEvent *event)
 
 void DataScratchWidget::resizeEvent(QResizeEvent *event)
 {
-    std::clog << "Resize <<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
 
-    forceScale = event->oldSize().width() > 0 && event->oldSize().height() > 0;
+    std::clog << "Resize event ==========" << std::endl;
+
+    // Scratchers must have chance to adjust client rectangle if they needed some space out of quote graph
+    mClientRect = rect();
+
+    {
+        std::shared_lock lock(mScratcherMutex);
+
+        for (const auto &s : mScratchers) {
+            s->Resize(*this);
+        }
+    }
+
+    if (event->oldSize().width() > 0 && event->oldSize().height() > 0) {
+        uint64_t old_end = mDataViewRect.x_end();
+        mDataViewRect.h = clientRect().height() * mYScale;
+        mDataViewRect.w = clientRect().width() * mXScale;
+        mDataViewRect.x = old_end - mDataViewRect.w;
+    }
+    else {
+        std::clog << "Resize from zero" << std::endl;
+        if (mDataViewRect.w) mXScale = static_cast<double>(mDataViewRect.w) / clientRect().width();
+        if (mDataViewRect.h) mYScale = static_cast<double>(mDataViewRect.h) / clientRect().height();
+    }
+
+    for (const auto& h: m_data_view_listeners) {
+        h(*this);
+    }
 
     QWidget::resizeEvent(event);
 }

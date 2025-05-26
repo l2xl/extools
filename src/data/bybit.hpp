@@ -116,6 +116,7 @@ private:
     static boost::asio::awaitable<void> DoPing(std::shared_ptr<ByBitApi> self);
 
     static boost::asio::awaitable<nlohmann::json> coGetInstrumentInfo(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription);
+    static boost::asio::awaitable<nlohmann::json> coGetPublicTradeHistory(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription, time_point start, time_point end);
 
     void SubscribePublicStream(const std::shared_ptr<ByBitSubscription>& subscription);
 
@@ -134,6 +135,8 @@ public:
 
     std::shared_ptr<ByBitSubscription> Subscribe(const std::string& symbol, std::shared_ptr<ByBitDataManager> manager);
     void Unsubscribe(const std::string& symbol);
+
+    void RequestRecentPublicTrades(std::shared_ptr<ByBitSubscription> s, std::shared_ptr<ByBitDataManager> manager, time_point start, time_point end);
 };
 
 }

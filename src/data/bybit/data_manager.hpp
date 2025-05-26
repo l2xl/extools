@@ -27,6 +27,7 @@ namespace scratcher {
 class Scratcher;
 
 namespace bybit {
+struct ByBitSubscription;
 
 class ByBitApi;
 class SubscriptionTopic;
@@ -36,6 +37,7 @@ class ByBitDataManager: public IDataProvider, public std::enable_shared_from_thi
 {
     const std::string m_symbol;
     std::shared_ptr<ByBitApi> mApi;
+    std::shared_ptr<ByBitSubscription> mSubscription;
 
     std::optional<currency<uint64_t>> m_price_point;
     std::optional<currency<uint64_t>> m_price_precision;
@@ -80,6 +82,8 @@ public:
     void HandleInstrumentData(const nlohmann::json& data);
     bool IsReadyHandleData() const
     { return m_price_point && m_volume_point; }
+
+    void HandlePublicTrades(const nlohmann::json& data);
 
     void HandleData(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& data);
     void HandleError(boost::system::error_code ec);

@@ -1,12 +1,21 @@
 // Scratcher project
-// Copyright (c) 2024 l2xl (l2xl/at/proton.me)
-// Distributed under the MIT software license, see the accompanying
-// file LICENSE or https://opensource.org/license/mit
+// Copyright (c) 2025 l2xl (l2xl/at/proton.me)
+// Distributed under the Intellectual Property Reserve License (IPRL)
+// -----BEGIN PGP PUBLIC KEY BLOCK-----
 //
+// mDMEYdxcVRYJKwYBBAHaRw8BAQdAfacBVThCP5QDPEgSbSIudtpJS4Y4Imm5dzaN
+// lM1HTem0IkwyIFhsIChsMnhsKSA8bDJ4bEBwcm90b25tYWlsLmNvbT6IkAQTFggA
+// OBYhBKRCfUyWnduCkisNl+WRcOaCK79JBQJh3FxVAhsDBQsJCAcCBhUKCQgLAgQW
+// AgMBAh4BAheAAAoJEOWRcOaCK79JDl8A/0/AjYVbAURZJXP3tHRgZyYyN9txT6mW
+// 0bYCcOf0rZ4NAQDoFX4dytPDvcjV7ovSQJ6dzvIoaRbKWGbHRCufrm5QBA==
+// =KKu7
+// -----END PGP PUBLIC KEY BLOCK-----
 
 #include <iostream>
 
 #include "market_controller.hpp"
+
+#include <mutex>
 
 #include "data_provider.hpp"
 #include "widget/scratch_widget.h"
@@ -18,11 +27,10 @@ MarketController::MarketController(std::shared_ptr<DataScratchWidget> widget, st
     : mWidget(widget), mDataProvider(dataProvider)
 {
     auto now = time_point::clock::now().time_since_epoch();
-    uint64_t start = std::chrono::duration_cast<milliseconds>(now).count();
-    uint64_t length = std::chrono::duration_cast<milliseconds>(hours(1)).count();
+    uint64_t start = std::chrono::duration_cast<milliseconds>(now - hours(20)).count();
+    uint64_t length = std::chrono::duration_cast<milliseconds>(hours(24)).count();
 
-    //widget->SetDataFieldRect(Rectangle{start,0,length,1000});
-    widget->SetDataViewRect(Rectangle{start,250,length,500});
+    widget->SetDataViewRect(Rectangle{start, 0, length, 1});
 
 }
 
@@ -33,6 +41,14 @@ std::shared_ptr<MarketController> MarketController::Create(std::shared_ptr<DataS
     widget->AddScratcher(std::make_shared<TimeRuler>());
 
     std::weak_ptr ref = res;
+
+    widget->AddDataViewChangeListener([ref](DataScratchWidget &w) {
+        if (auto self = ref.lock()) {
+            const auto& dataView = w.GetDataViewRect();
+            self->OnDataViewChange(dataView.x_start(), dataView.x_end());
+        }
+    });
+
     res->mDataProvider->AddInsctrumentDataUpdateHandler([ref]() {
         if (auto self = ref.lock()) {
             if (auto widget = self->mWidget.lock()) {
@@ -60,4 +76,20 @@ std::shared_ptr<MarketController> MarketController::Create(std::shared_ptr<DataS
     return res;
 }
 
+void MarketController::OnDataViewChange(uint64_t view_start, uint64_t view_end)
+{
+    if (auto w = mWidget.lock()) {
+        std::clog << "OnDataViewChange(" << w->GetDataViewRect().x_start() << ", " << w->GetDataViewRect().x_end() << ")" << std::endl;
+
+
+        if (!mDataProvider->PublicTradeCache().empty()) {
+            std::unique_lock lock(mDataProvider->PublicTradeMutex());
+            view_end = duration_cast<milliseconds>(mDataProvider->PublicTradeCache().front().trade_time.time_since_epoch()).count();
+        }
+
+        if (view_start < view_end) {
+
+        }
+    }
+}
 }
