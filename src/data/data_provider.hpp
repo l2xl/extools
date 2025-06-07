@@ -64,7 +64,7 @@ struct IDataProvider {
     virtual const boost::container::flat_map<uint64_t, uint64_t>& Asks() const = 0;
 
     virtual std::shared_ptr<Scratcher> MakePriceRulerScratcher() const = 0;
-    virtual std::shared_ptr<Scratcher> MakeQuoteGraphScratcher() const = 0;
+    virtual std::shared_ptr<Scratcher> MakeQuoteGraphScratcher(duration group_time) const = 0;
     virtual std::shared_ptr<Scratcher> MakeOrdersSpreadScratcher() const = 0;
 };
 

@@ -28,7 +28,7 @@ class ContentFrameWidget : public QFrame
 private:
     std::unique_ptr<QLabel> m_titleLabel;
     std::unique_ptr<QVBoxLayout> m_contentLayout;
-    std::unique_ptr<QFrame> m_contentWidget;
+    std::shared_ptr<QWidget> m_contentWidget;
 
 public:
     explicit ContentFrameWidget(QWidget* parent = nullptr);
@@ -36,7 +36,7 @@ public:
     void setTitle(const QString& title)
     { if (m_titleLabel) m_titleLabel->setText(title); }
     
-    void setContent(std::unique_ptr<QFrame> widget);
+    void setContent(std::shared_ptr<QWidget> widget);
 
 signals:
     void settingsRequested();

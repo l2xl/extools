@@ -11,7 +11,7 @@
 // =KKu7
 // -----END PGP PUBLIC KEY BLOCK-----
 
-#include "mainwindow.h"
+#include "trade_cockpit.h"
 #include "config.hpp"
 
 #include <QApplication>
@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
 
         auto bybit = scratcher::bybit::ByBitApi::Create(config, scheduler);
 
-        MainWindow w(bybit);
+        TradeCockpitWindow w(bybit);
 
         w.show();
         return a.exec();

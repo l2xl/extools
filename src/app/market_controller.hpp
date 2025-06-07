@@ -17,6 +17,10 @@
 #include <list>
 #include <memory>
 
+#include "timedef.hpp"
+#include "view_controller.hpp"
+
+
 namespace scratcher {
 
 class DataScratchWidget;
@@ -31,9 +35,10 @@ struct PendingQuotesRequest
 
 };
 
-class MarketController : public std::enable_shared_from_this<MarketController>{
+class MarketViewController : public ViewController, public std::enable_shared_from_this<MarketViewController>{
     std::weak_ptr<DataScratchWidget> mWidget;
     std::shared_ptr<IDataProvider> mDataProvider;
+    time_point m_last_trade_time;
 
     std::list<PendingQuotesRequest> mPendingRequests;
     std::mutex mPendingRequestsMutex;
@@ -41,13 +46,16 @@ class MarketController : public std::enable_shared_from_this<MarketController>{
     std::shared_ptr<Scratcher> mPriceRuler;
     std::shared_ptr<Scratcher> mQuoteGraph;
 
+    duration m_trade_group_time = seconds(30);
+
     struct EnsurePrivate {};
 public:
-    MarketController(std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider, EnsurePrivate);
+    MarketViewController(size_t id, std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider, EnsurePrivate);
 
-    static std::shared_ptr<MarketController> Create(std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider);
+    static std::shared_ptr<MarketViewController> Create(size_t id, std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider);
 
     void OnDataViewChange(uint64_t view_start, uint64_t view_end);
+    void OnMarketDataUpdate();
 };
 
 }

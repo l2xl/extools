@@ -23,20 +23,20 @@
 namespace scratcher {
 
 
-MarketController::MarketController(std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider, EnsurePrivate)
-    : mWidget(widget), mDataProvider(dataProvider)
+MarketViewController::MarketViewController(size_t id, std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider, EnsurePrivate)
+    : ViewController(id), mWidget(widget), mDataProvider(dataProvider), m_last_trade_time(time_point::clock::now())
 {
-    auto now = time_point::clock::now().time_since_epoch();
-    uint64_t start = std::chrono::duration_cast<milliseconds>(now - hours(20)).count();
-    uint64_t length = std::chrono::duration_cast<milliseconds>(hours(24)).count();
+    auto now = m_last_trade_time.time_since_epoch();
+    uint64_t start = std::chrono::duration_cast<milliseconds>(now - minutes(20)).count();
+    uint64_t length = std::chrono::duration_cast<milliseconds>(minutes(30)).count();
 
     widget->SetDataViewRect(Rectangle{start, 0, length, 1});
 
 }
 
-std::shared_ptr<MarketController> MarketController::Create(std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider)
+std::shared_ptr<MarketViewController> MarketViewController::Create(size_t id, std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider)
 {
-    auto res = std::make_shared<MarketController>(widget, move(dataProvider), EnsurePrivate{});
+    auto res = std::make_shared<MarketViewController>(id, widget, move(dataProvider), EnsurePrivate{});
 
     widget->AddScratcher(std::make_shared<TimeRuler>());
 
@@ -56,7 +56,7 @@ std::shared_ptr<MarketController> MarketController::Create(std::shared_ptr<DataS
                 if (self->mQuoteGraph) widget->RemoveScratcher(self->mQuoteGraph);
 
                 widget->AddScratcher(self->mPriceRuler = self->mDataProvider->MakePriceRulerScratcher());
-                widget->AddScratcher(self->mQuoteGraph = self->mDataProvider->MakeQuoteGraphScratcher(), 0);
+                widget->AddScratcher(self->mQuoteGraph = self->mDataProvider->MakeQuoteGraphScratcher(self->m_trade_group_time), 0);
 
                 widget->update();
             }
@@ -64,9 +64,7 @@ std::shared_ptr<MarketController> MarketController::Create(std::shared_ptr<DataS
     });
     res->mDataProvider->AddMarketDataUpdateHandler([ref]() {
         if (auto self = ref.lock()) {
-            if (auto widget = self->mWidget.lock()) {
-                widget->update();
-            }
+            self->OnMarketDataUpdate();
         }
     });
 
@@ -76,7 +74,7 @@ std::shared_ptr<MarketController> MarketController::Create(std::shared_ptr<DataS
     return res;
 }
 
-void MarketController::OnDataViewChange(uint64_t view_start, uint64_t view_end)
+void MarketViewController::OnDataViewChange(uint64_t view_start, uint64_t view_end)
 {
     if (auto w = mWidget.lock()) {
         std::clog << "OnDataViewChange(" << w->GetDataViewRect().x_start() << ", " << w->GetDataViewRect().x_end() << ")" << std::endl;
@@ -92,4 +90,14 @@ void MarketController::OnDataViewChange(uint64_t view_start, uint64_t view_end)
         }
     }
 }
+
+void MarketViewController::OnMarketDataUpdate()
+{
+    if (auto widget = mWidget.lock()) {
+        //if (self->mDataProvider->PublicTradeCache().back().trade_time)
+        widget->update();
+    }
+
+}
+
 }

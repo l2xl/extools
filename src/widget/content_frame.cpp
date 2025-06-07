@@ -60,7 +60,7 @@ ContentFrameWidget::ContentFrameWidget(QWidget *parent): QFrame(parent)
     layout->addWidget(contentWidget, 1);
 }
 
-void ContentFrameWidget::setContent(std::unique_ptr<QFrame> widget)
+void ContentFrameWidget::setContent(std::shared_ptr<QWidget> widget)
 {
     // Remove any existing widgets
     if (m_contentWidget) {

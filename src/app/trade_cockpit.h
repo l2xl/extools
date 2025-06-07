@@ -28,7 +28,7 @@
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
-class MainWindow;
+class TradeCockpitWindow;
 }
 QT_END_NAMESPACE
 
@@ -39,31 +39,36 @@ class ByBitApi;
 class ByBitDataManager;
 }
 class AsioScheduler;
+class ViewController;
 }
 
-class MainWindow : public QMainWindow
+class ContentFrameWidget;
+
+class TradeCockpitWindow : public QMainWindow
 {
     Q_OBJECT
-    std::unique_ptr<Ui::MainWindow> ui;
+    std::unique_ptr<Ui::TradeCockpitWindow> ui;
 
     // Market data and view
     std::shared_ptr<scratcher::bybit::ByBitApi> mMarketApi;
-    std::shared_ptr<scratcher::MarketController> mMarketViewController;
+    //std::shared_ptr<scratcher::MarketViewController> mMarketViewController;
     std::shared_ptr<scratcher::bybit::ByBitDataManager> mMarketData;
-    std::shared_ptr<scratcher::DataScratchWidget> mMarketView;
+    //std::shared_ptr<scratcher::DataScratchWidget> mMarketView;
     
     // Panels management
-    int mNextPanelId = 1;
+    size_t m_next_panel_id = 1;
 
-
+    boost::container::flat_map<size_t, std::shared_ptr<scratcher::ViewController>> mControllers;
 private slots:
 
 private:
-    void createInitialPanel();
+    std::unique_ptr<ContentFrameWidget> createGridCell(QGridLayout& gridLayout, int row, int col);
+    std::unique_ptr<ContentFrameWidget> createTab(QTabWidget& tabWidget);
+    std::unique_ptr<ContentFrameWidget> createPanel(QLayout& layout);
 
 public:
-    MainWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent = nullptr);
-    ~MainWindow() override;
+    TradeCockpitWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent = nullptr);
+    ~TradeCockpitWindow() override;
 
     inline bool isDarkMode() {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)

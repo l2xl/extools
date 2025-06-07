@@ -60,9 +60,10 @@ set(PROJECT_SOURCES
         src/main.cpp
         src/config.hpp
         src/config.cpp
-        src/app/mainwindow.cpp
-        src/app/mainwindow.h
-        src/app/mainwindow.ui
+        src/app/trade_cockpit.cpp
+        src/app/trade_cockpit.h
+        src/app/trade_cockpit.ui
+        src/app/view_controller.hpp
         src/widget/scratch_widget.cpp
         src/widget/scratch_widget.h
         src/widget/content_frame.h
@@ -97,6 +98,7 @@ include_directories(
         src/common
         src/app
         src/data
+        src/widget
 )
 
 target_link_libraries(exscratcher PRIVATE Qt6::Widgets Qt6::Svg)

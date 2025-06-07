@@ -14,22 +14,39 @@
 #ifndef QUOTE_SCRATCHER_HPP
 #define QUOTE_SCRATCHER_HPP
 
+#include "timedef.hpp"
 #include "data_provider.hpp"
 #include "scratcher.hpp"
 
 namespace scratcher {
 
+struct BuoyData
+{
+    uint64_t max;
+    uint64_t min;
+
+    uint64_t mean;
+    uint64_t volume;
+};
+
 class QuoteScratcher: public Scratcher {
     std::shared_ptr<const IDataProvider> mDataManager;
-    mutable IDataProvider::pubtrade_cache_t::const_iterator m_first_shown_trade_it;
+
+    const uint64_t m_buoy_timelen;
+
+    IDataProvider::pubtrade_cache_t::const_iterator m_first_shown_trade_it;
+
+    uint64_t m_first_buoy_timestamp;
+    std::deque<BuoyData> m_buoy_data;
 public:
-    explicit QuoteScratcher(std::shared_ptr<const IDataProvider> dataManager)
+    explicit QuoteScratcher(std::shared_ptr<const IDataProvider> dataManager, duration group_time)
         : mDataManager(move(dataManager))
+        , m_buoy_timelen(duration_cast<milliseconds>(group_time).count())
         , m_first_shown_trade_it(mDataManager->PublicTradeCache().end()){}
     ~QuoteScratcher() override= default;
 
-    void Resize(DataScratchWidget& w) const override {}
-    void BeforePaint(DataScratchWidget& w) const override;
+    void Resize(DataScratchWidget& w) override {}
+    void BeforePaint(DataScratchWidget& w) override;
     void Paint(DataScratchWidget& w) const override;
 };
 

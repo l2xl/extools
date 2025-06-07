@@ -11,22 +11,24 @@
 // =KKu7
 // -----END PGP PUBLIC KEY BLOCK-----
 
-#ifndef SCRATCHER_HPP
-#define SCRATCHER_HPP
+#ifndef VIEW_CONTROLLER_HPP
+#define VIEW_CONTROLLER_HPP
+
+#include <stddef.h>
 
 namespace scratcher {
 
-class DataScratchWidget;
-
-struct Scratcher
-{
-    virtual ~Scratcher() = default;
-
-    virtual void Resize(DataScratchWidget&) = 0;
-    virtual void BeforePaint(DataScratchWidget&) = 0;
-    virtual void Paint(DataScratchWidget&) const = 0;
+class ViewController {
+    size_t m_view_id;
+protected:
+    explicit ViewController(size_t view_id)
+        : m_view_id(view_id)
+    {}
+public:
+    size_t getViewId() const
+    { return m_view_id; }
 };
 
 }
 
-#endif //SCRATCHER_HPP
+#endif //VIEW_CONTROLLER_HPP

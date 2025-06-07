@@ -79,7 +79,7 @@ void DataScratchWidget::RemoveScratcher(const std::shared_ptr<Scratcher> &scratc
     if (it != mScratchers.end()) mScratchers.erase(it);
 }
 
-void TimeRuler::Resize(DataScratchWidget &w) const
+void TimeRuler::Resize(DataScratchWidget &w)
 {
     auto text_height = w.fontMetrics().height();
     const auto& r = w.GetClientRect();
@@ -134,7 +134,7 @@ void TimeRuler::Paint(DataScratchWidget& w) const
     p.drawText(QPoint{5, w.size().height() - 1}, label);
 }
 
-void PriceRuler::Resize(DataScratchWidget &w) const
+void PriceRuler::Resize(DataScratchWidget &w)
 {
     currency<uint64_t> max_price = point;
     max_price.set_raw(w.GetDataViewRect().y_end());
