@@ -19,7 +19,7 @@ endif()
 
 project(exscratcher VERSION 0.1 LANGUAGES CXX)
 
-#include(cmake/CPM.cmake)
+include(cmake/CPM.cmake)
 
 set(CMAKE_VERBOSE_MAKEFILE on)
 
@@ -114,3 +114,20 @@ install(TARGETS exscratcher
 )
 
 qt_finalize_executable(exscratcher)
+
+if(NOT ANDROID)
+
+    CPMAddPackage("gh:catchorg/Catch2@3.5.4")
+    #find_package(Catch2 3 REQUIRED)
+
+    # Function to create test executable for each test file
+    function(add_test TEST_NAME TEST_FILE)
+        add_executable(${TEST_NAME} ${TEST_FILE})
+        target_link_libraries(${TEST_NAME} PRIVATE Catch2::Catch2WithMain)
+    endfunction()
+
+    # Add each test file as a separate executable
+    add_test(test_currency test/common/test_currency.cpp)
+
+endif()
+
