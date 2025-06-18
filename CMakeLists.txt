@@ -87,6 +87,9 @@ set(PROJECT_SOURCES
         src/widget/scratcher.hpp
         src/widget/quote_scratcher.cpp
         src/widget/quote_scratcher.hpp
+        src/core/buoy_candle.cpp
+        src/core/buoy_candle.hpp
+        src/core/core_common.hpp
 )
 
 qt_add_executable(exscratcher MANUAL_FINALIZATION ${PROJECT_SOURCES})
@@ -96,6 +99,7 @@ include_directories(
         contrib
         src
         src/common
+        src/core
         src/app
         src/data
         src/widget
@@ -128,6 +132,7 @@ if(NOT ANDROID)
 
     # Add each test file as a separate executable
     add_test(test_currency test/common/test_currency.cpp)
+    add_test(test_buoy_candle test/core/test_buoy_candle.cpp)
 
 endif()
 

@@ -46,7 +46,7 @@ class MarketViewController : public ViewController, public std::enable_shared_fr
     std::shared_ptr<Scratcher> mPriceRuler;
     std::shared_ptr<Scratcher> mQuoteGraph;
 
-    duration m_trade_group_time = seconds(30);
+    duration m_trade_group_time = seconds(60);
 
     struct EnsurePrivate {};
 public:

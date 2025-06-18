@@ -16,7 +16,6 @@
 
 #include <deque>
 #include <array>
-#include <deque>
 #include <shared_mutex>
 
 #include <QWidget>
@@ -24,20 +23,13 @@
 #include <QResizeEvent>
 
 #include "currency.hpp"
+#include "core_common.hpp"
 #include "timedef.hpp"
 #include "scratcher.hpp"
 
 namespace scratcher {
 
 
-struct Rectangle
-{
-    uint64_t x = 0, y = 0, w = 0, h = 0;
-    uint64_t x_start() const { return x; }
-    uint64_t x_end() const { return x + w; }
-    uint64_t y_start() const { return y; }
-    uint64_t y_end() const { return y + h; }
-};
 
 class TimeRuler : public Scratcher
 {

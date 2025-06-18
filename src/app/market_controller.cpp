@@ -94,10 +94,17 @@ void MarketViewController::OnDataViewChange(uint64_t view_start, uint64_t view_e
 void MarketViewController::OnMarketDataUpdate()
 {
     if (auto widget = mWidget.lock()) {
-        //if (self->mDataProvider->PublicTradeCache().back().trade_time)
-        widget->update();
+        auto last_ts = duration_cast<milliseconds>(m_last_trade_time.time_since_epoch()).count();
+        if (last_ts < widget->GetDataViewRect().x_end()) {
+            Rectangle rect = widget->GetDataViewRect();
+            {
+                std::unique_lock lock(mDataProvider->PublicTradeMutex());
+                m_last_trade_time = mDataProvider->PublicTradeCache().back().trade_time;
+            }
+            rect.x += duration_cast<milliseconds>(m_last_trade_time.time_since_epoch()).count() - last_ts;
+            widget->SetDataViewRect(rect);
+        }
     }
-
 }
 
 }

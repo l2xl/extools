@@ -17,31 +17,22 @@
 #include "timedef.hpp"
 #include "data_provider.hpp"
 #include "scratcher.hpp"
+#include "buoy_candle.hpp"
 
 namespace scratcher {
 
-struct BuoyData
-{
-    uint64_t max;
-    uint64_t min;
-
-    uint64_t mean;
-    uint64_t volume;
-};
 
 class QuoteScratcher: public Scratcher {
+    BuoyCandleQuotes mQuotes;
     std::shared_ptr<const IDataProvider> mDataManager;
-
-    const uint64_t m_buoy_timelen;
 
     IDataProvider::pubtrade_cache_t::const_iterator m_first_shown_trade_it;
 
-    uint64_t m_first_buoy_timestamp;
-    std::deque<BuoyData> m_buoy_data;
+
 public:
     explicit QuoteScratcher(std::shared_ptr<const IDataProvider> dataManager, duration group_time)
-        : mDataManager(move(dataManager))
-        , m_buoy_timelen(duration_cast<milliseconds>(group_time).count())
+        : mQuotes(duration_cast<milliseconds>(group_time).count())
+        , mDataManager(move(dataManager))
         , m_first_shown_trade_it(mDataManager->PublicTradeCache().end()){}
     ~QuoteScratcher() override= default;
 
