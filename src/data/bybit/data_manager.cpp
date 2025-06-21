@@ -17,7 +17,6 @@
 #include "bybit.hpp"
 #include "stream.hpp"
 #include "subscription.hpp"
-#include "../../widget/quote_scratcher.hpp"
 #include "widget/scratch_widget.h"
 
 namespace scratcher::bybit {
@@ -202,23 +201,6 @@ void ByBitDataManager::AddInsctrumentDataUpdateHandler(std::function<void()> h)
 void ByBitDataManager::AddMarketDataUpdateHandler(std::function<void()> h)
 {
     m_marketdata_handlers.emplace_back(std::move(h));
-}
-
-std::shared_ptr<Scratcher> ByBitDataManager::MakePriceRulerScratcher() const
-{
-    if (!m_price_point) throw std::runtime_error("No instrument data");
-
-    return std::make_shared<PriceRuler>(*m_price_point);
-}
-
-std::shared_ptr<Scratcher> ByBitDataManager::MakeQuoteGraphScratcher(duration group_time) const
-{
-    return std::make_shared<QuoteScratcher>(shared_from_this(), group_time);
-}
-
-std::shared_ptr<Scratcher> ByBitDataManager::MakeOrdersSpreadScratcher() const
-{
-    return nullptr;
 }
 
 } // scratcher::bybit

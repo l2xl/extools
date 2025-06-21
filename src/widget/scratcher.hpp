@@ -23,7 +23,6 @@ struct Scratcher
     virtual ~Scratcher() = default;
 
     virtual void Resize(DataScratchWidget&) = 0;
-    virtual void BeforePaint(DataScratchWidget&) = 0;
     virtual void Paint(DataScratchWidget&) const = 0;
 };
 

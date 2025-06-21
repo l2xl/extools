@@ -30,9 +30,8 @@ int main(int argc, char *argv[])
 
         auto bybit = scratcher::bybit::ByBitApi::Create(config, scheduler);
 
-        TradeCockpitWindow w(bybit);
+        auto w = TradeCockpitWindow::Create(scheduler, bybit);
 
-        w.show();
         return a.exec();
     }
     catch(std::system_error& e) {

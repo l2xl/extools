@@ -11,9 +11,10 @@
 // =KKu7
 // -----END PGP PUBLIC KEY BLOCK-----
 
+#include <boost/asio/co_spawn.hpp>
+
 #include "trade_cockpit.h"
-#include "trade_cockpit.h"
-#include "./ui_trade_cockpit.h"
+#include "ui_trade_cockpit.h"
 
 #include "market_controller.hpp"
 #include "content_frame.h"
@@ -22,8 +23,6 @@
 #include "bybit/data_manager.hpp"
 
 #include <chrono>
-#include <QVBoxLayout>
-#include <QDebug>
 
 using std::chrono::seconds;
 using std::chrono::milliseconds;
@@ -31,10 +30,12 @@ using std::chrono::days;
 
 typedef std::chrono::utc_clock::time_point time_point;
 
+namespace this_coro =  boost::asio::this_coro;
 
-TradeCockpitWindow::TradeCockpitWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent)
+TradeCockpitWindow::TradeCockpitWindow(std::shared_ptr<scratcher::AsioScheduler> scheduler, std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent, EnsurePrivate)
     : QMainWindow(parent)
     , ui(std::make_unique<Ui::TradeCockpitWindow>())
+    , mScheduler(std::move(scheduler)), m_ui_update_timer(std::make_shared<boost::asio::steady_timer>(mScheduler->io(), milliseconds(100)))
     , mMarketApi(std::move(marketApi))
 {
     ui->setupUi(this);
@@ -53,9 +54,44 @@ TradeCockpitWindow::TradeCockpitWindow(std::shared_ptr<scratcher::bybit::ByBitAp
     contentFrame.release();
 
     size_t panel_id = m_next_panel_id++;
-    mControllers[panel_id] = std::static_pointer_cast<scratcher::ViewController>(scratcher::MarketViewController::Create(panel_id, marketView, mMarketData));
+    mControllers[panel_id] = std::static_pointer_cast<scratcher::ViewController>(scratcher::MarketViewController::Create(panel_id, marketView, mMarketData, std::move(scheduler)));
+
 }
 
+
+std::shared_ptr<TradeCockpitWindow> TradeCockpitWindow::Create(std::shared_ptr<scratcher::AsioScheduler> scheduler, std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent)
+{
+    auto self = std::make_shared<TradeCockpitWindow>(scheduler, marketApi, parent, EnsurePrivate{});
+    self->show();
+
+    co_spawn(self->mScheduler->io(), coUpdate(self), boost::asio::detached);
+
+    return self;
+}
+
+
+boost::asio::awaitable<void> TradeCockpitWindow::coUpdate(std::weak_ptr<TradeCockpitWindow> ref)
+{
+    while(true) {
+        try {
+            std::shared_ptr<boost::asio::steady_timer> timer;
+            if (auto self = ref.lock()) {
+                timer = self->m_ui_update_timer;
+                for (const auto& controller: self->mControllers){
+                    controller.second->Update();
+                }
+            }
+            else break;
+
+            //TODO: Add check for cancellation happens before this point
+            co_await timer->async_wait(boost::asio::use_awaitable);
+        }
+        catch (boost::system::error_code& e) {
+            if (e.value() == boost::asio::error::operation_aborted) break;
+        }
+        catch (...){}
+    }
+}
 
 std::unique_ptr<ContentFrameWidget> TradeCockpitWindow::createGridCell(QGridLayout& gridLayout, int row, int col)
 {
@@ -95,5 +131,6 @@ std::unique_ptr<ContentFrameWidget> TradeCockpitWindow::createPanel(QLayout& lay
 
 TradeCockpitWindow::~TradeCockpitWindow()
 {
-    // The unique_ptr will automatically clean up the UI and panel widgets
+    m_ui_update_timer->cancel();
 }
+

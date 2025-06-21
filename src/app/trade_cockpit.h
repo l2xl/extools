@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <boost/container/flat_map.hpp>
+#include <boost/asio.hpp>
 
 #include "widget/scratch_widget.h"
 #include "market_controller.hpp"
@@ -44,21 +45,23 @@ class ViewController;
 
 class ContentFrameWidget;
 
-class TradeCockpitWindow : public QMainWindow
+class TradeCockpitWindow : public QMainWindow, public std::enable_shared_from_this<TradeCockpitWindow>
 {
     Q_OBJECT
     std::unique_ptr<Ui::TradeCockpitWindow> ui;
 
-    // Market data and view
+    std::shared_ptr<scratcher::AsioScheduler> mScheduler;
+    std::shared_ptr<boost::asio::steady_timer> m_ui_update_timer;
+
+
     std::shared_ptr<scratcher::bybit::ByBitApi> mMarketApi;
-    //std::shared_ptr<scratcher::MarketViewController> mMarketViewController;
     std::shared_ptr<scratcher::bybit::ByBitDataManager> mMarketData;
-    //std::shared_ptr<scratcher::DataScratchWidget> mMarketView;
-    
+
     // Panels management
     size_t m_next_panel_id = 1;
 
     boost::container::flat_map<size_t, std::shared_ptr<scratcher::ViewController>> mControllers;
+    std::mutex mControllersMutex;
 private slots:
 
 private:
@@ -66,9 +69,16 @@ private:
     std::unique_ptr<ContentFrameWidget> createTab(QTabWidget& tabWidget);
     std::unique_ptr<ContentFrameWidget> createPanel(QLayout& layout);
 
+    static boost::asio::awaitable<void> coUpdate(std::weak_ptr<TradeCockpitWindow>);
+
+    struct EnsurePrivate{};
+
 public:
-    TradeCockpitWindow(std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent = nullptr);
+    TradeCockpitWindow(std::shared_ptr<scratcher::AsioScheduler>, std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent, EnsurePrivate);
     ~TradeCockpitWindow() override;
+
+    static std::shared_ptr<TradeCockpitWindow> Create(std::shared_ptr<scratcher::AsioScheduler>, std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent = nullptr);
+
 
     inline bool isDarkMode() {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)

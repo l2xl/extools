@@ -100,11 +100,6 @@ public:
 
     void AddInsctrumentDataUpdateHandler(std::function<void()> h) override;
     void AddMarketDataUpdateHandler(std::function<void()> h) override;
-
-    std::shared_ptr<Scratcher> MakePriceRulerScratcher() const override;
-    std::shared_ptr<Scratcher> MakeQuoteGraphScratcher(duration group_time) const override;
-    std::shared_ptr<Scratcher> MakeOrdersSpreadScratcher() const override;
-
 };
 
 } // scratcher::bybit

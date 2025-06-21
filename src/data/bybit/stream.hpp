@@ -8,11 +8,10 @@
 #define BYBIT_STREAM_HPP
 
 #include <chrono>
-#include <deque>
+#include <atomic>
 #include <iostream>
 
 #include <boost/asio.hpp>
-#include <boost/asio/spawn.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/ssl.hpp>
 #include <boost/lexical_cast.hpp>

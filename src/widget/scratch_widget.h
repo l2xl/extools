@@ -36,7 +36,6 @@ class TimeRuler : public Scratcher
 public:
     ~TimeRuler() override = default;
     void Resize(DataScratchWidget &widget) override;
-    void BeforePaint(DataScratchWidget &widget) override {}
     void Paint(DataScratchWidget &widget) const override;
 };
 
@@ -47,7 +46,6 @@ public:
     PriceRuler(currency<uint64_t> p) : point(p) {}
     ~PriceRuler() override = default;
     void Resize(DataScratchWidget &widget) override;
-    void BeforePaint(DataScratchWidget &widget) override {}
     void Paint(DataScratchWidget &widget) const override;
 };
 

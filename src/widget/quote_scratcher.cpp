@@ -22,12 +22,19 @@
 
 namespace scratcher {
 
-void QuoteScratcher::BeforePaint(DataScratchWidget &w)
+void QuoteScratcher::Resize(DataScratchWidget &w)
+{
+    m_pixel_duration = static_cast<uint64_t>(std::floor(w.GetDataViewRect().w / w.GetClientRect().width())) + 1;
+}
+
+void QuoteScratcher::CalculatePaint(Rectangle& rect)
 {
     if (!mDataManager->PublicTradeCache().empty()) {
         std::unique_lock lock(mDataManager->PublicTradeMutex());
-
-        mQuotes.PrepairData(w.mDataViewRect, mDataManager->PublicTradeCache());
+        if (m_last_processed_trade_time < mDataManager->PublicTradeCache().back().trade_time) {
+            mQuotes.PrepairData(rect, mDataManager->PublicTradeCache());
+            m_last_processed_trade_time = mDataManager->PublicTradeCache().back().trade_time;
+        }
     }
 }
 

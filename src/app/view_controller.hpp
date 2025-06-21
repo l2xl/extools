@@ -27,6 +27,8 @@ protected:
 public:
     size_t getViewId() const
     { return m_view_id; }
+
+    virtual void Update() = 0;
 };
 
 }

@@ -40,9 +40,6 @@ DataScratchWidget::DataScratchWidget(QWidget *parent)
 
 void DataScratchWidget::SetDataViewRect(const Rectangle& rect)
 {
-    std::clog << "SetDataViewRect ^^^^^^^^^^^^" << std::endl;
-
-
     mDataViewRect = rect;
 
     if (clientRect().width()) mXScale = static_cast<double>(mDataViewRect.w) / clientRect().width();
@@ -168,7 +165,7 @@ void PriceRuler::Paint(DataScratchWidget &w) const
     uint64_t scale = 1;
     uint64_t steps = w.GetDataViewRect().h;
 
-    std::clog << "DataView height: " << steps << std::endl;
+    //std::clog << "DataView height: " << steps << std::endl;
 
     while (steps > 10) {
         steps /= 10;
@@ -191,26 +188,20 @@ void PriceRuler::Paint(DataScratchWidget &w) const
 
 void DataScratchWidget::paintEvent(QPaintEvent *event)
 {
-    std::clog << "Paint event **********" << std::endl;
+    QPainter p(this);
+    QPen pen(Qt::gray, 1, Qt::DashLine, Qt::FlatCap, Qt::MiterJoin);
+    p.setPen(pen);
+    p.setBrush(Qt::gray);
+
+    p.drawLine(GetClientRect().topLeft(), GetClientRect().bottomRight());
+
     {
         std::shared_lock lock(mScratcherMutex);
-
-        for (const auto &scr : mScratchers) {
-            scr->BeforePaint(*this);
-        }
 
         for (const auto &scr : mScratchers) {
             scr->Paint(*this);
         }
     }
-
-    QPainter p(this);
-    QPen redPen(Qt::red, 5, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
-    p.setPen(redPen);
-    p.setBrush(Qt::red);
-
-    p.drawLine(GetClientRect().topLeft(), GetClientRect().bottomRight());
-
 }
 
 void DataScratchWidget::resizeEvent(QResizeEvent *event)

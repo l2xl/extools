@@ -62,10 +62,6 @@ struct IDataProvider {
     virtual std::mutex& PublicTradeMutex() const = 0;
     virtual const boost::container::flat_map<uint64_t, uint64_t>& Bids() const = 0;
     virtual const boost::container::flat_map<uint64_t, uint64_t>& Asks() const = 0;
-
-    virtual std::shared_ptr<Scratcher> MakePriceRulerScratcher() const = 0;
-    virtual std::shared_ptr<Scratcher> MakeQuoteGraphScratcher(duration group_time) const = 0;
-    virtual std::shared_ptr<Scratcher> MakeOrdersSpreadScratcher() const = 0;
 };
 
 
