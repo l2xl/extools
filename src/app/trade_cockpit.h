@@ -51,8 +51,6 @@ class TradeCockpitWindow : public QMainWindow, public std::enable_shared_from_th
     std::unique_ptr<Ui::TradeCockpitWindow> ui;
 
     std::shared_ptr<scratcher::AsioScheduler> mScheduler;
-    std::shared_ptr<boost::asio::steady_timer> m_ui_update_timer;
-
 
     std::shared_ptr<scratcher::bybit::ByBitApi> mMarketApi;
     std::shared_ptr<scratcher::bybit::ByBitDataManager> mMarketData;

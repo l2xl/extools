@@ -74,10 +74,12 @@ protected:
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
+public slots:
+    void DataViewRectChanged(Rectangle rect);
+
 public:
     explicit DataScratchWidget(QWidget *parent = nullptr);
 
-    void SetDataViewRect(const Rectangle& rect);
     const Rectangle& GetDataViewRect() const { return mDataViewRect; }
     const QRect& GetClientRect() const { return mClientRect; }
 

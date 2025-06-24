@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <limits>
 
 #include "quote_scratcher.hpp"
 
@@ -30,12 +31,88 @@ void QuoteScratcher::Resize(DataScratchWidget &w)
 void QuoteScratcher::CalculatePaint(Rectangle& rect)
 {
     if (!mDataManager->PublicTradeCache().empty()) {
-        std::unique_lock lock(mDataManager->PublicTradeMutex());
-        if (m_last_processed_trade_time < mDataManager->PublicTradeCache().back().trade_time) {
-            mQuotes.PrepairData(rect, mDataManager->PublicTradeCache());
-            m_last_processed_trade_time = mDataManager->PublicTradeCache().back().trade_time;
+        uint64_t cache_first_ts = get_timestamp(mDataManager->PublicTradeCache().front().trade_time);
+        uint64_t cache_first_buoy_ts = cache_first_ts - cache_first_ts % mQuotes.buoy_duration();
+        uint64_t rect_first_buoy_ts = rect.x_start() - rect.x_start() % mQuotes.buoy_duration();
+        uint64_t start_ts = std::max(cache_first_buoy_ts, rect_first_buoy_ts);
+        auto start = (start_ts == cache_first_buoy_ts)
+                ? mDataManager->PublicTradeCache().begin()
+                : std::lower_bound(mDataManager->PublicTradeCache().begin(), mDataManager->PublicTradeCache().end(), start_ts,
+                                    [](const auto& t, uint64_t x) { return get_timestamp(t.trade_time) < x; });
+
+        uint64_t cache_last_ts = get_timestamp(mDataManager->PublicTradeCache().back().trade_time);
+        uint64_t cache_last_buoy_ts = cache_last_ts - cache_last_ts % mQuotes.buoy_duration() + mQuotes.buoy_duration();
+        uint64_t rect_last_buoy_ts = rect.x_end() - rect.x_end() % mQuotes.buoy_duration();
+        uint64_t end_ts = std::min(cache_last_buoy_ts, rect_last_buoy_ts);
+        auto end = std::lower_bound(start, mDataManager->PublicTradeCache().end(), end_ts,
+            [](const auto& t, uint64_t x) { return get_timestamp(t.trade_time) < x; });
+
+        if (start_ts < mQuotes.first_trade_timestamp().value_or(0)) {
+            mQuotes.Reset();
         }
+        else if (mQuotes.last_trade_timestamp()){
+            start = std::upper_bound(start, end, *mQuotes.last_trade_timestamp(),
+                [](uint64_t x, const auto& t) { return x < get_timestamp(t.trade_time); });
+        }
+
+        uint64_t last_price = 0;
+        if (start != mDataManager->PublicTradeCache().end()) {
+            if (start != mDataManager->PublicTradeCache().begin())
+                last_price = (start-1)->price_points;
+            else
+                last_price = start->price_points;
+        }
+
+        uint64_t now_ts = get_timestamp(std::chrono::utc_clock::now());
+        mQuotes.AppendTrades(std::ranges::subrange(start, end), now_ts, last_price);
+
+        for (const auto& buoy: mQuotes.buoy_data()) {
+            uint64_t max_price = std::max(rect.y_end(), buoy.max);
+            rect.y = std::min(rect.y, buoy.min);
+            rect.h = max_price - rect.y;
+        }
+
+        std::clog << "Price range [" << rect.y << ", " << rect.y_end() << "]" << std::endl;
     }
+}
+
+
+namespace {
+
+void PaintBuoy(const BuoyCandleQuotes& quotes, uint64_t buoy_ts, const auto& buoy, const auto& prev_buoy, DataScratchWidget &w)
+{
+    QPainter p(&w);
+    QPen greenPen(Qt::green, 1, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
+    QPen redPen(Qt::red, 1, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
+
+    uint64_t mean_time = buoy_ts + quotes.buoy_duration()/2;
+    QPoint maxPt(w.DataXToWidgetX(mean_time), w.DataYToWidgetY(buoy.max));
+    QPoint meanPt(w.DataXToWidgetX(mean_time), w.DataYToWidgetY(buoy.mean));
+    QPoint minPt(w.DataXToWidgetX(mean_time), w.DataYToWidgetY(buoy.min));
+
+    p.setPen(greenPen);
+    p.setBrush(Qt::green);
+
+    if (prev_buoy.max <= buoy.max)
+        p.drawLine(maxPt, meanPt);
+    if (prev_buoy.min <= buoy.min)
+        p.drawLine(minPt, meanPt);
+
+    p.setPen(redPen);
+    p.setBrush(Qt::red);
+
+    if (prev_buoy.max > buoy.max)
+        p.drawLine(maxPt, meanPt);
+    if (prev_buoy.min > buoy.min)
+        p.drawLine(minPt, meanPt);
+
+    if (prev_buoy.mean <= buoy.mean) {
+        p.setPen(greenPen);
+        p.setBrush(Qt::green);
+    }
+    p.drawLine(QPoint(w.DataXToWidgetX(buoy_ts), w.DataYToWidgetY(buoy.mean)), QPoint(w.DataXToWidgetX(buoy_ts+quotes.buoy_duration()-1), w.DataYToWidgetY(buoy.mean)));
+}
+
 }
 
 void QuoteScratcher::Paint(DataScratchWidget &w) const
@@ -44,43 +121,28 @@ void QuoteScratcher::Paint(DataScratchWidget &w) const
     QPen greenPen(Qt::green, 1, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
     QPen redPen(Qt::red, 1, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
 
-    uint64_t bouy_time = mQuotes.first_timestamp();
-    auto last_bouy_it = mQuotes.buoy_data().end();
-    for (auto bouy_it = mQuotes.buoy_data().begin(); bouy_it != mQuotes.buoy_data().end(); ++bouy_it) {
-        if (bouy_time > w.GetDataViewRect().x_start()) {
-            if (bouy_time + mQuotes.buoy_duration() > w.GetDataViewRect().x_end()) break;
+    if (mQuotes.first_buoy_timestamp()) {
+        uint64_t buoy_time = *mQuotes.first_buoy_timestamp();
+        auto last_buoy_it = mQuotes.buoy_data().end();
+        for (auto buoy_it = mQuotes.buoy_data().begin(); buoy_it != mQuotes.buoy_data().end(); ++buoy_it) {
+            if (buoy_time >= w.GetDataViewRect().x_start()) {
+                if (buoy_time + mQuotes.buoy_duration() > w.GetDataViewRect().x_end()) break;
 
-            uint64_t mean_time = bouy_time + mQuotes.buoy_duration()/2;
-            QPoint maxPt(w.DataXToWidgetX(mean_time), w.DataYToWidgetY(bouy_it->max));
-            QPoint meanPt(w.DataXToWidgetX(mean_time), w.DataYToWidgetY(bouy_it->mean));
-            QPoint minPt(w.DataXToWidgetX(mean_time), w.DataYToWidgetY(bouy_it->min));
-
-            p.setPen(greenPen);
-            p.setBrush(Qt::green);
-
-            if (last_bouy_it == mQuotes.buoy_data().end() || last_bouy_it->max <= bouy_it->max)
-                p.drawLine(maxPt, meanPt);
-            if (last_bouy_it == mQuotes.buoy_data().end() || last_bouy_it->min <= bouy_it->min)
-                p.drawLine(minPt, meanPt);
-
-            p.setPen(redPen);
-            p.setBrush(Qt::red);
-
-            if (last_bouy_it != mQuotes.buoy_data().end() && last_bouy_it->max > bouy_it->max)
-                p.drawLine(maxPt, meanPt);
-            if (last_bouy_it != mQuotes.buoy_data().end() && last_bouy_it->min > bouy_it->min)
-                p.drawLine(minPt, meanPt);
-
-            if (last_bouy_it == mQuotes.buoy_data().end() || last_bouy_it->mean <= bouy_it->mean) {
-                p.setPen(greenPen);
-                p.setBrush(Qt::green);
+                PaintBuoy(mQuotes, buoy_time, *buoy_it, last_buoy_it == mQuotes.buoy_data().end() ? *buoy_it : *last_buoy_it, w);
             }
-            p.drawLine(QPoint(w.DataXToWidgetX(bouy_time), w.DataYToWidgetY(bouy_it->mean)), QPoint(w.DataXToWidgetX(bouy_time+mQuotes.buoy_duration()-1), w.DataYToWidgetY(bouy_it->mean)));
+
+            buoy_time += mQuotes.buoy_duration();
+            last_buoy_it = buoy_it;
         }
 
-        bouy_time += mQuotes.buoy_duration();
-        last_bouy_it = bouy_it;
+        if (buoy_time >= w.GetDataViewRect().x_start() && buoy_time + mQuotes.buoy_duration() < w.GetDataViewRect().x_end()) {
+            if (mQuotes.buoy_data().empty())
+                PaintBuoy(mQuotes, buoy_time, mCurCandle, mCurCandle , w);
+            else
+                PaintBuoy(mQuotes, buoy_time, mCurCandle, mQuotes.buoy_data().back(), w);
+        }
     }
 }
+
 
 }

@@ -38,15 +38,14 @@ DataScratchWidget::DataScratchWidget(QWidget *parent)
     setAutoFillBackground(true);
 }
 
-void DataScratchWidget::SetDataViewRect(const Rectangle& rect)
+void DataScratchWidget::DataViewRectChanged(Rectangle rect)
 {
     mDataViewRect = rect;
 
     if (clientRect().width()) mXScale = static_cast<double>(mDataViewRect.w) / clientRect().width();
     if (clientRect().height()) mYScale = static_cast<double>(mDataViewRect.h) / clientRect().height();
 
-    if (isVisible())
-        update();
+    update();
 }
 
 int DataScratchWidget::DataXToWidgetX(uint64_t x) const

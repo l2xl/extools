@@ -35,7 +35,7 @@ namespace this_coro =  boost::asio::this_coro;
 TradeCockpitWindow::TradeCockpitWindow(std::shared_ptr<scratcher::AsioScheduler> scheduler, std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent, EnsurePrivate)
     : QMainWindow(parent)
     , ui(std::make_unique<Ui::TradeCockpitWindow>())
-    , mScheduler(std::move(scheduler)), m_ui_update_timer(std::make_shared<boost::asio::steady_timer>(mScheduler->io(), milliseconds(100)))
+    , mScheduler(std::move(scheduler))
     , mMarketApi(std::move(marketApi))
 {
     ui->setupUi(this);
@@ -72,22 +72,40 @@ std::shared_ptr<TradeCockpitWindow> TradeCockpitWindow::Create(std::shared_ptr<s
 
 boost::asio::awaitable<void> TradeCockpitWindow::coUpdate(std::weak_ptr<TradeCockpitWindow> ref)
 {
+    std::clog << "Enter update ==========================" << std::endl;
     while(true) {
         try {
-            std::shared_ptr<boost::asio::steady_timer> timer;
+            std::optional<boost::asio::steady_timer> timer;
             if (auto self = ref.lock()) {
-                timer = self->m_ui_update_timer;
                 for (const auto& controller: self->mControllers){
                     controller.second->Update();
                 }
+                timer = std::make_optional(boost::asio::steady_timer(self->mScheduler->io(), milliseconds(1000)));
             }
-            else break;
+            else {
+                std::clog << "CockpitWindow destroyed?????????????????" << std::endl;
+                break;
+            }
 
             //TODO: Add check for cancellation happens before this point
-            co_await timer->async_wait(boost::asio::use_awaitable);
+            if (timer) {
+                timer->expires_after(milliseconds(100));
+                co_await timer->async_wait(boost::asio::use_awaitable);
+            }
+            else {
+                std::clog << "Update timer is destroyed <<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
+                break;
+            }
         }
         catch (boost::system::error_code& e) {
-            if (e.value() == boost::asio::error::operation_aborted) break;
+            std::cerr << "System error: " << e.what() << std::endl;
+            if (e.value() == boost::asio::error::operation_aborted) {
+                std::clog << "Update timer is CANCELLED <<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl;
+                break;
+            }
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
         }
         catch (...){}
     }
@@ -131,6 +149,6 @@ std::unique_ptr<ContentFrameWidget> TradeCockpitWindow::createPanel(QLayout& lay
 
 TradeCockpitWindow::~TradeCockpitWindow()
 {
-    m_ui_update_timer->cancel();
+    //m_ui_update_timer->cancel();
 }
 

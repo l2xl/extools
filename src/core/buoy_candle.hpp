@@ -14,48 +14,102 @@
 #ifndef BOUY_CANDLE_QUOTES_HPP
 #define BOUY_CANDLE_QUOTES_HPP
 
-#include <deque>
+#include <iostream>
 #include <ranges>
-#include <concepts>
 #include <limits>
 #include <chrono>
 #include <cassert>
+#include <algorithm>
+#include <optional>
+#include <tbb/concurrent_vector.h>
 
 #include "core_common.hpp"
+#include "timedef.hpp"
 
 using std::chrono::duration_cast;
 using std::chrono::milliseconds;
 
 namespace scratcher {
-struct BuoyData
+
+template <typename P, typename V>
+struct BuoyCandleData
 {
-    uint64_t min;
-    uint64_t max;
-    uint64_t mean;
-    uint64_t volume;
+    P min;
+    P max;
+    P mean;
+    V volume;
+
+    BuoyCandleData() = default;
+
+    BuoyCandleData(auto min, auto max, auto mean, auto vol)
+    {
+        this->min = min;
+        this->max = max;
+        this->mean = mean;
+        this->volume = vol;
+    }
+
+    template <typename P1, typename V1>
+    BuoyCandleData(const BuoyCandleData<P1, V1>& other)
+    {
+        min = other.min;
+        max = other.max;
+        mean = other.mean;
+        volume = other.volume;
+    }
+
+    BuoyCandleData& operator=(const BuoyCandleData& other) = default;
+
+    template <typename P1, typename V1>
+    BuoyCandleData& operator=(const BuoyCandleData<P1, V1>& other)
+    {
+        min = other.min;
+        max = other.max;
+        mean = other.mean;
+        volume = other.volume;
+        return *this;
+    }
+
 };
 
 
-
 class BuoyCandleQuotes {
+public:
+    typedef BuoyCandleData<uint64_t, uint64_t> buoy_t;
+private:
     const uint64_t m_buoy_duration;
 
-    uint64_t m_first_buoy_timestamp;
-    std::deque<BuoyData> m_buoy_data;
+    std::optional<std::atomic_uint64_t> m_first_buoy_timestamp;
+    std::optional<std::atomic_uint64_t> m_first_trade_timestamp;
+    std::optional<std::atomic_uint64_t> m_last_trade_timestamp;
+    tbb::concurrent_vector<buoy_t> m_buoy_data;
+    BuoyCandleData<std::atomic_uint64_t, std::atomic_uint64_t> mCurCandle;;
 
 public:
-    BuoyCandleQuotes(uint64_t candle_time)
+    explicit BuoyCandleQuotes(uint64_t candle_time)
         : m_buoy_duration(candle_time)
     {}
 
     uint64_t buoy_duration() const
     { return m_buoy_duration; }
 
-    uint64_t first_timestamp() const
+    std::optional<uint64_t> first_trade_timestamp() const
+    { return m_first_trade_timestamp; }
+    
+    std::optional<uint64_t> last_trade_timestamp() const
+    { return m_last_trade_timestamp; }
+
+    std::optional<uint64_t> first_buoy_timestamp() const
     { return m_first_buoy_timestamp; }
 
-    const std::deque<BuoyData>& buoy_data() const
+    const tbb::concurrent_vector<buoy_t>& buoy_data() const
     { return m_buoy_data; }
+
+    buoy_t active_buoy() const
+    { return mCurCandle; }
+
+    void Reset()
+    { m_first_buoy_timestamp.reset(); }
 
     template <std::ranges::input_range Range>
     requires requires(std::ranges::range_value_t<Range> trade) {
@@ -63,60 +117,71 @@ public:
         trade.price_points;
         trade.volume_points;
     }
-    void PrepairData(Rectangle &dataRect, Range& trades)
+    uint64_t AppendTrades(const Range& trades, uint64_t now_ts, uint64_t last_price)
     {
-        m_buoy_data.clear();
+        if (!trades.empty()) {
 
-        if (!std::ranges::empty(trades)) {
-            auto end = std::ranges::end(trades);
-            auto it = std::lower_bound(std::ranges::begin(trades), end,
-                dataRect.x_start() - m_buoy_duration, [=](const auto& t, const uint64_t& x) {
-                    return duration_cast<milliseconds>(t.trade_time.time_since_epoch()).count() < x;
-                });
+            uint64_t first_ts = get_timestamp(std::ranges::begin(trades)->trade_time);
 
-            uint64_t first_trade_timestamp = duration_cast<milliseconds>(it->trade_time.time_since_epoch()).count();
-            m_first_buoy_timestamp = first_trade_timestamp - (first_trade_timestamp % m_buoy_duration);
-            uint64_t next_bouy_timestamp = m_first_buoy_timestamp + m_buoy_duration;
+            if (!m_first_buoy_timestamp) { // indicates that Reset() was called
+                mCurCandle = buoy_t(last_price, last_price, last_price, 0);
+                m_buoy_data.clear();
+                m_first_trade_timestamp.emplace(first_ts);
+                m_first_buoy_timestamp.emplace(first_ts - first_ts % buoy_duration());
+                m_last_trade_timestamp.reset();
+            }
 
-            uint64_t window_max_price = 0;
-            uint64_t window_min_price = std::numeric_limits<uint64_t>::max();
+            if (m_buoy_data.size() > 0 && first_ts < *m_first_buoy_timestamp + (m_buoy_data.size() - 1) * m_buoy_duration)
+                throw std::invalid_argument("Trade time earlier then first candle time");
 
-            BuoyData curBuoy = {std::numeric_limits<uint64_t>::max(), 0, 0, 0};
+            if (m_last_trade_timestamp && first_ts < *m_last_trade_timestamp)
+                throw std::invalid_argument("Trade time earlier then last processed trade time");
 
-            auto last_trade_it = end;
+            uint64_t next_buoy_ts = *m_first_buoy_timestamp + m_buoy_data.size() * buoy_duration();
+            uint64_t trade_ts = 0; // Will not be empty since trades is not empty
+            for(auto it = std::ranges::begin(trades); it != std::ranges::end(trades); ++it) {
+                trade_ts = get_timestamp(it->trade_time);
 
-            for (auto trade_it = it; trade_it != end; last_trade_it = trade_it++) {
-
-                uint64_t trade_timestamp = duration_cast<milliseconds>(trade_it->trade_time.time_since_epoch()).count();
-
-                if (trade_timestamp >= dataRect.x_end()) break;
-
-                while (trade_timestamp >= next_bouy_timestamp) {
-                    m_buoy_data.emplace_back(curBuoy);
-                    if (last_trade_it != end)
-                        curBuoy = {last_trade_it->price_points, last_trade_it->price_points, last_trade_it->price_points, 0};
-                    else
-                        curBuoy = {std::numeric_limits<uint64_t>::max(), 0, 0, 0};
-                    next_bouy_timestamp += m_buoy_duration;
+                while (trade_ts >= next_buoy_ts) {
+                    if (mCurCandle.volume > 0 || !m_buoy_data.empty()) {
+                        buoy_t buoy = mCurCandle;
+                        mCurCandle = buoy_t(last_price, last_price, last_price, 0);
+                        m_buoy_data.emplace_back(buoy);
+                    }
+                    next_buoy_ts += buoy_duration();
                 }
 
-                window_max_price = std::max(trade_it->price_points, window_max_price);
-                window_min_price = std::min(trade_it->price_points, window_min_price);
+                uint64_t last_volume = mCurCandle.volume.load();
+                uint64_t sum_volume = last_volume + it->volume_points;
 
-                uint64_t sum_volume = curBuoy.volume + trade_it->volume_points;
+                uint64_t max = std::max(it->price_points, mCurCandle.max.load());
+                uint64_t min = std::min(it->price_points, mCurCandle.min.load());
 
-                curBuoy.max = std::max(trade_it->price_points, curBuoy.max);
-                curBuoy.min = std::min(trade_it->price_points, curBuoy.min);
-                curBuoy.mean = (curBuoy.mean * curBuoy.volume + trade_it->price_points * trade_it->volume_points) / sum_volume;
-                curBuoy.volume = sum_volume;
+                mCurCandle.max = max;
+                mCurCandle.min = min;
+                mCurCandle.mean = (mCurCandle.mean.load() * last_volume + it->price_points * it->volume_points) / sum_volume;
+                mCurCandle.volume = sum_volume;
+
+                last_price = it->price_points;
             }
-            m_buoy_data.emplace_back(curBuoy);
-
-            dataRect.y = window_min_price;
-            dataRect.h = window_max_price - window_min_price;
+            m_last_trade_timestamp.emplace(trade_ts);
         }
+
+        if (m_first_buoy_timestamp) {
+            uint64_t active_buoy_ts = now_ts - now_ts % buoy_duration();
+            uint64_t next_buoy_ts = *m_first_buoy_timestamp + m_buoy_data.size() * buoy_duration();
+            while (active_buoy_ts > next_buoy_ts) {
+                buoy_t buoy = mCurCandle;
+                mCurCandle = buoy_t(last_price, last_price, last_price, 0);
+                m_buoy_data.push_back(buoy);
+                next_buoy_ts += buoy_duration();
+            }
+        }
+
+        return last_price;
     }
 };
+
 }
 
 #endif //BOUY_CANDLE_QUOTES_HPP

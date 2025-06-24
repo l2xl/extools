@@ -17,7 +17,10 @@
 #include <list>
 #include <memory>
 
+#include <QObject>
+
 #include "timedef.hpp"
+#include "core_common.hpp"
 #include "view_controller.hpp"
 
 
@@ -37,7 +40,10 @@ struct PendingQuotesRequest
 
 };
 
-class MarketViewController : public ViewController, public std::enable_shared_from_this<MarketViewController>{
+class MarketViewController : public QObject, public ViewController, public std::enable_shared_from_this<MarketViewController>
+{
+    Q_OBJECT
+
     std::weak_ptr<DataScratchWidget> mWidget;
     std::shared_ptr<IDataProvider> mDataProvider;
     std::shared_ptr<AsioScheduler> mScheduler;
@@ -53,6 +59,10 @@ class MarketViewController : public ViewController, public std::enable_shared_fr
     duration m_trade_group_time;
 
     struct EnsurePrivate {};
+
+signals:
+    void UpdateDataViewRect(Rectangle rect);
+
 public:
     MarketViewController(size_t id, std::shared_ptr<DataScratchWidget> , std::shared_ptr<IDataProvider>, std::shared_ptr<AsioScheduler>, EnsurePrivate);
 

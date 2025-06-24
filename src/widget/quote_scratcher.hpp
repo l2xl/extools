@@ -14,6 +14,9 @@
 #ifndef QUOTE_SCRATCHER_HPP
 #define QUOTE_SCRATCHER_HPP
 
+#include <atomic>
+#include <QPainter>
+
 #include "timedef.hpp"
 #include "data_provider.hpp"
 #include "scratcher.hpp"
@@ -24,18 +27,19 @@ namespace scratcher {
 
 class QuoteScratcher: public Scratcher {
     BuoyCandleQuotes mQuotes;
+    BuoyCandleData<std::atomic_uint64_t, std::atomic_uint64_t> mCurCandle;;
+
     std::shared_ptr<const IDataProvider> mDataManager;
 
     IDataProvider::pubtrade_cache_t::const_iterator m_first_shown_trade_it;
-    time_point m_last_processed_trade_time;
     uint64_t m_pixel_duration;
 
 public:
     explicit QuoteScratcher(std::shared_ptr<const IDataProvider> dataManager, duration group_time)
         : mQuotes(duration_cast<milliseconds>(group_time).count())
+        , mCurCandle()
         , mDataManager(move(dataManager))
         , m_first_shown_trade_it(mDataManager->PublicTradeCache().end())
-        , m_last_processed_trade_time(time_point::min())
         , m_pixel_duration(1)
     {}
     ~QuoteScratcher() override= default;
@@ -43,6 +47,7 @@ public:
     void Resize(DataScratchWidget& w) override;
     void CalculatePaint(Rectangle& rect);
     void Paint(DataScratchWidget& w) const override;
+
 };
 
 }

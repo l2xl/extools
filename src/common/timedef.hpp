@@ -29,6 +29,9 @@ using std::chrono::days;
 
 using std::chrono::duration_cast;
 
+inline uint64_t get_timestamp(time_point t)
+{ return duration_cast<milliseconds>(t.time_since_epoch()).count(); }
+
 }
 
 #endif //TIMEDEF_HPP

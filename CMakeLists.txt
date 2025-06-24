@@ -45,15 +45,15 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
 find_package(Boost 1.83 REQUIRED COMPONENTS context system)
 
-# Add Qlementine style library
-#CPMAddPackage(
-#    NAME Qlementine
-#    GITHUB_REPOSITORY oclero/qlementine
-#    GIT_TAG v1.2.2
-#    OPTIONS
-#        "QLEMENTINE_BUILD_EXAMPLES OFF"
-#        "QLEMENTINE_BUILD_TESTS OFF"
-#)
+# Add oneTBB library
+CPMAddPackage(
+    NAME TBB
+    GITHUB_REPOSITORY oneapi-src/oneTBB
+    GIT_TAG v2022.1.0
+    OPTIONS
+        "TBB_TEST OFF"
+        "TBB_EXAMPLES OFF"
+)
 
 
 set(PROJECT_SOURCES
@@ -108,7 +108,7 @@ include_directories(
 target_link_libraries(exscratcher PRIVATE Qt6::Widgets Qt6::Svg)
 target_link_libraries(exscratcher PRIVATE ${Boost_LIBRARIES})
 target_link_libraries(exscratcher PRIVATE OpenSSL::SSL)
-#target_link_libraries(exscratcher PRIVATE qlementine)
+target_link_libraries(exscratcher PRIVATE TBB::tbb)
 
 include(GNUInstallDirs)
 install(TARGETS exscratcher
@@ -128,6 +128,7 @@ if(NOT ANDROID)
     function(add_test TEST_NAME TEST_FILE)
         add_executable(${TEST_NAME} ${TEST_FILE})
         target_link_libraries(${TEST_NAME} PRIVATE Catch2::Catch2WithMain)
+        target_link_libraries(${TEST_NAME} PRIVATE TBB::tbb)
     endfunction()
 
     # Add each test file as a separate executable

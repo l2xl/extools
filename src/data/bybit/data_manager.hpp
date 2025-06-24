@@ -16,7 +16,6 @@
 
 #include <string>
 #include <memory>
-#include <deque>
 #include <list>
 #include <boost/asio/detail/socket_option.hpp>
 
@@ -56,7 +55,6 @@ class ByBitDataManager: public IDataProvider, public std::enable_shared_from_thi
     std::optional<currency<uint64_t>> m_max_amount; // Max order amount/cost
 
     pubtrade_cache_t m_pubtrade_cache;
-    mutable std::mutex m_pubtrade_mutex;
 
     boost::container::flat_map<uint64_t, uint64_t> m_order_book_bids;
     boost::container::flat_map<uint64_t, uint64_t> m_order_book_asks;
@@ -79,9 +77,6 @@ public:
 
     const pubtrade_cache_t& PublicTradeCache() const override
     { return m_pubtrade_cache; }
-
-    std::mutex& PublicTradeMutex() const override
-    { return m_pubtrade_mutex; }
 
     const boost::container::flat_map<uint64_t, uint64_t>& Bids() const override
     { return m_order_book_bids; }

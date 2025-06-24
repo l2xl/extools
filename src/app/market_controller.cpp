@@ -12,7 +12,6 @@
 // -----END PGP PUBLIC KEY BLOCK-----
 
 #include <iostream>
-#include <mutex>
 #include <iomanip>
 #include <ctime>
 
@@ -43,7 +42,7 @@ MarketViewController::MarketViewController(size_t id, std::shared_ptr<DataScratc
 
     uint64_t length = std::chrono::duration_cast<milliseconds>(minutes(30)).count();
 
-    widget->SetDataViewRect(Rectangle{start, 0, length, 1});
+    widget->DataViewRectChanged(Rectangle{start, std::numeric_limits<uint64_t>::max(), length, 1});
 
 }
 
@@ -81,9 +80,10 @@ std::shared_ptr<MarketViewController> MarketViewController::Create(size_t id, st
         }
     });
 
-    if (widget->isVisible())
-        widget->update();
+    // if (widget->isVisible())
+    //     widget->update();
 
+    connect(res.get(), &MarketViewController::UpdateDataViewRect, widget.get(), &DataScratchWidget::DataViewRectChanged, Qt::ConnectionType::QueuedConnection);
     return res;
 }
 
@@ -94,7 +94,6 @@ void MarketViewController::OnDataViewChange(uint64_t view_start, uint64_t view_e
 
 
         if (!mDataProvider->PublicTradeCache().empty()) {
-            std::unique_lock lock(mDataProvider->PublicTradeMutex());
             view_end = duration_cast<milliseconds>(mDataProvider->PublicTradeCache().front().trade_time.time_since_epoch()).count();
         }
 
@@ -120,7 +119,6 @@ void MarketViewController::OnMarketDataUpdate()
 void MarketViewController::Update()
 {
     if (auto widget = mWidget.lock()) {
-
         time_point now = std::chrono::utc_clock::now();
         Rectangle rect = widget->GetDataViewRect();
 
@@ -131,7 +129,7 @@ void MarketViewController::Update()
             if (mQuoteGraph)
                 mQuoteGraph->CalculatePaint(rect);
 
-            widget->SetDataViewRect(rect);
+            UpdateDataViewRect(rect);
         }
     }
 }

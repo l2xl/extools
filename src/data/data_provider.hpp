@@ -17,16 +17,12 @@
 
 #include <functional>
 #include <chrono>
-#include <deque>
 
 #include <boost/container/flat_map.hpp>
+#include <tbb/concurrent_vector.h>
 
 #include "currency.hpp"
 #include "timedef.hpp"
-
-namespace std {
-class mutex;
-}
 
 namespace scratcher {
 
@@ -46,8 +42,9 @@ struct Trade
 
 struct Scratcher;
 
-struct IDataProvider {
-    typedef std::deque<Trade> pubtrade_cache_t;
+struct IDataProvider
+{
+    typedef tbb::concurrent_vector<Trade> pubtrade_cache_t;
 
     virtual ~IDataProvider() = default;
 
@@ -59,7 +56,6 @@ struct IDataProvider {
     virtual currency<uint64_t> PricePoint() const = 0;
 
     virtual const pubtrade_cache_t& PublicTradeCache() const = 0;
-    virtual std::mutex& PublicTradeMutex() const = 0;
     virtual const boost::container::flat_map<uint64_t, uint64_t>& Bids() const = 0;
     virtual const boost::container::flat_map<uint64_t, uint64_t>& Asks() const = 0;
 };

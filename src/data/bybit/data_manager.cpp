@@ -108,10 +108,7 @@ void ByBitDataManager::HandleData(const SubscriptionTopic& topic, const std::str
 
             std::clog << side_str << ": " << trade_time << ", price (points): " << price.raw() << ", volume (points): " << value.raw() << std::endl;
 
-            {
-                std::unique_lock lock(m_pubtrade_mutex);
-                m_pubtrade_cache.emplace_back(move(id), trade_time, price.raw(), value.raw(), side);
-            }
+            m_pubtrade_cache.push_back(Trade{move(id), trade_time, price.raw(), value.raw(), side});
         }
     }
     else if (topic.Title() == "orderbook"){
