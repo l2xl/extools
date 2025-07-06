@@ -75,14 +75,15 @@ struct BuoyCandleData
 
 class BuoyCandleQuotes {
 public:
-    typedef BuoyCandleData<uint64_t, uint64_t> buoy_t;
+    typedef BuoyCandleData<uint64_t, uint64_t> candle_t;
+    typedef tbb::concurrent_vector<candle_t> quotes_t;
 private:
     const uint64_t m_buoy_duration;
 
     std::optional<std::atomic_uint64_t> m_first_buoy_timestamp;
     std::optional<std::atomic_uint64_t> m_first_trade_timestamp;
     std::optional<std::atomic_uint64_t> m_last_trade_timestamp;
-    tbb::concurrent_vector<buoy_t> m_buoy_data;
+    quotes_t m_buoy_data;
     BuoyCandleData<std::atomic_uint64_t, std::atomic_uint64_t> mCurCandle;;
 
 public:
@@ -102,10 +103,10 @@ public:
     std::optional<uint64_t> first_buoy_timestamp() const
     { return m_first_buoy_timestamp; }
 
-    const tbb::concurrent_vector<buoy_t>& buoy_data() const
+    const quotes_t& quotes() const
     { return m_buoy_data; }
 
-    buoy_t active_buoy() const
+    candle_t active_candle() const
     { return mCurCandle; }
 
     void Reset()
@@ -124,7 +125,7 @@ public:
             uint64_t first_ts = get_timestamp(std::ranges::begin(trades)->trade_time);
 
             if (!m_first_buoy_timestamp) { // indicates that Reset() was called
-                mCurCandle = buoy_t(last_price, last_price, last_price, 0);
+                mCurCandle = candle_t(last_price, last_price, last_price, 0);
                 m_buoy_data.clear();
                 m_first_trade_timestamp.emplace(first_ts);
                 m_first_buoy_timestamp.emplace(first_ts - first_ts % buoy_duration());
@@ -144,8 +145,8 @@ public:
 
                 while (trade_ts >= next_buoy_ts) {
                     if (mCurCandle.volume > 0 || !m_buoy_data.empty()) {
-                        buoy_t buoy = mCurCandle;
-                        mCurCandle = buoy_t(last_price, last_price, last_price, 0);
+                        candle_t buoy = mCurCandle;
+                        mCurCandle = candle_t(last_price, last_price, last_price, 0);
                         m_buoy_data.emplace_back(buoy);
                     }
                     next_buoy_ts += buoy_duration();
@@ -171,8 +172,8 @@ public:
             uint64_t active_buoy_ts = now_ts - now_ts % buoy_duration();
             uint64_t next_buoy_ts = *m_first_buoy_timestamp + m_buoy_data.size() * buoy_duration();
             while (active_buoy_ts > next_buoy_ts) {
-                buoy_t buoy = mCurCandle;
-                mCurCandle = buoy_t(last_price, last_price, last_price, 0);
+                candle_t buoy = mCurCandle;
+                mCurCandle = candle_t(last_price, last_price, last_price, 0);
                 m_buoy_data.push_back(buoy);
                 next_buoy_ts += buoy_duration();
             }

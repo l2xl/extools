@@ -17,12 +17,14 @@
 namespace scratcher {
 
 class DataScratchWidget;
+class Rectangle;
 
 struct Scratcher
 {
     virtual ~Scratcher() = default;
 
-    virtual void Resize(DataScratchWidget&) = 0;
+    virtual void CalculateSize(DataScratchWidget&) = 0;
+    virtual void CalculatePaint(Rectangle&) = 0;
     virtual void Paint(DataScratchWidget&) const = 0;
 };
 

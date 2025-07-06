@@ -27,7 +27,6 @@ namespace scratcher {
 
 class QuoteScratcher: public Scratcher {
     BuoyCandleQuotes mQuotes;
-    BuoyCandleData<std::atomic_uint64_t, std::atomic_uint64_t> mCurCandle;;
 
     std::shared_ptr<const IDataProvider> mDataManager;
 
@@ -37,15 +36,20 @@ class QuoteScratcher: public Scratcher {
 public:
     explicit QuoteScratcher(std::shared_ptr<const IDataProvider> dataManager, duration group_time)
         : mQuotes(duration_cast<milliseconds>(group_time).count())
-        , mCurCandle()
         , mDataManager(move(dataManager))
         , m_first_shown_trade_it(mDataManager->PublicTradeCache().end())
         , m_pixel_duration(1)
     {}
     ~QuoteScratcher() override= default;
 
-    void Resize(DataScratchWidget& w) override;
-    void CalculatePaint(Rectangle& rect);
+    BuoyCandleQuotes::candle_t GetActiveCandle() const
+    { return mQuotes.active_candle(); }
+
+    const BuoyCandleQuotes::quotes_t& GetQuotes() const
+    { return mQuotes.quotes(); }
+
+    void CalculateSize(DataScratchWidget& w) override;
+    void CalculatePaint(Rectangle& rect) override;
     void Paint(DataScratchWidget& w) const override;
 
 };

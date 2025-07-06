@@ -66,6 +66,10 @@ void DataScratchWidget::AddScratcher(std::shared_ptr<Scratcher> s, std::optional
         mScratchers.emplace(mScratchers.begin() + *z_order, std::move(s));
     else
         mScratchers.emplace_back(std::move(s));
+
+    for (const auto &s : mScratchers) {
+        s->CalculateSize(*this);
+    }
 }
 
 void DataScratchWidget::RemoveScratcher(const std::shared_ptr<Scratcher> &scratcher)
@@ -73,9 +77,11 @@ void DataScratchWidget::RemoveScratcher(const std::shared_ptr<Scratcher> &scratc
     std::unique_lock lock(mScratcherMutex);
     auto it = std::find(mScratchers.begin(), mScratchers.end(), scratcher);
     if (it != mScratchers.end()) mScratchers.erase(it);
+
+    if (mQuoteScratcher == scratcher) mQuoteScratcher.reset();
 }
 
-void TimeRuler::Resize(DataScratchWidget &w)
+void TimeRuler::CalculateSize(DataScratchWidget &w)
 {
     auto text_height = w.fontMetrics().height();
     const auto& r = w.GetClientRect();
@@ -101,8 +107,8 @@ void TimeRuler::Paint(DataScratchWidget& w) const
     const QRect& rect = w.GetClientRect();
     auto text_height = p.fontMetrics().height();
     int axis_y = rect.bottom()+1;
-    int tick_y2 = axis_y + text_height/2;
-    int tick_y1 = tick_y2 - text_height;
+    int tick_y2 = axis_y + text_height/4;
+    int tick_y1 = tick_y2 - text_height/2;
     std::vector<uint64_t> ticks;
 
     if (window_day_count >=3) {
@@ -130,9 +136,9 @@ void TimeRuler::Paint(DataScratchWidget& w) const
     p.drawText(QPoint{5, w.size().height() - 1}, label);
 }
 
-void PriceRuler::Resize(DataScratchWidget &w)
+void PriceRuler::CalculateSize(DataScratchWidget &w)
 {
-    currency<uint64_t> max_price = point;
+    currency<uint64_t> max_price = m_point;
     max_price.set_raw(w.GetDataViewRect().y_end());
 
     std::string label = max_price.to_string();
@@ -156,8 +162,8 @@ void PriceRuler::Paint(DataScratchWidget &w) const
     auto text_height = p.fontMetrics().tightBoundingRect("0").height();
     auto char_width = p.fontMetrics().horizontalAdvance('O');
     int axis_x = rect.right() + 1;
-    int tick_x1 = axis_x - char_width;
-    int tick_x2 = axis_x + char_width;
+    int tick_x1 = axis_x - char_width/2;
+    int tick_x2 = axis_x + char_width/2;
 
     std::vector<uint64_t> ticks;
 
@@ -166,9 +172,9 @@ void PriceRuler::Paint(DataScratchWidget &w) const
 
     //std::clog << "DataView height: " << steps << std::endl;
 
-    while (steps > 10) {
-        steps /= 10;
-        scale *= 10;
+    while (steps > 5) {
+        steps /= 5;
+        scale *= 5;
     }
     ticks = w.GetPriceTicks(scale);
 
@@ -176,13 +182,64 @@ void PriceRuler::Paint(DataScratchWidget &w) const
         int t = w.DataYToWidgetY(tick);
         p.drawLine(QPoint(tick_x1, t), QPoint(tick_x2, t));
 
-        currency<uint64_t> tick_price = point;
+        currency<uint64_t> tick_price = m_point;
         tick_price.set_raw(tick);
 
         std::string label = tick_price.to_string();
         p.drawText(QPoint(tick_x2 + char_width/2, t + text_height/2), QString::fromLatin1(label));
     }
     p.drawLine(QPoint(axis_x, rect.top()), QPoint(axis_x, rect.bottom()));
+}
+
+void PriceIndicator::Paint(DataScratchWidget &w) const
+{
+    if (!mDataManager->PublicTradeCache().empty()) {
+        QPainter p(&w);
+        QPen pen(Qt::gray, 1, Qt::DotLine, Qt::FlatCap, Qt::MiterJoin);
+        QPen box_pen(Qt::green, 1, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
+        p.setPen(pen);
+        p.setBrush(Qt::gray);
+
+        const QRect& rect = w.GetClientRect();
+        auto char_width = p.fontMetrics().horizontalAdvance('0');
+        int label_x = rect.right() + 1 + char_width;
+
+        auto last_price = m_point;
+        last_price.set_raw(mDataManager->PublicTradeCache().back().price_points);
+        QString label = QString::fromLatin1(last_price.to_string());
+        int price_y = w.DataYToWidgetY(last_price.raw());
+
+        p.drawLine(QPoint(rect.left(), price_y), QPoint(rect.right(), price_y));
+
+        QRect price_rect = p.fontMetrics().boundingRect(label);
+
+        QRect price_box(label_x, price_y - price_rect.height() / 2, price_rect.width() + char_width, price_rect.height());
+
+        auto active_candle = w.quoteScratcher()->GetActiveCandle();
+
+        p.setBrush(last_price.raw() >= active_candle.mean ? Qt::green : Qt::red);
+        p.setPen(Qt::NoPen);
+        p.drawRect(price_box);
+
+        p.setPen(Qt::white);
+        p.drawText(price_box, Qt::AlignCenter, label);
+
+    }
+}
+
+void Margin::CalculatePaint(Rectangle& rect)
+{
+    if (rect.y_start() != std::numeric_limits<uint64_t>::max()) {
+        if (rect.h < 100) {
+            rect.y = rect.y + rect.h/2 -50;
+            rect.h = 100;
+        }
+        else {
+            uint64_t margin = static_cast<uint64_t>(rect.h * m_margin_rate);
+            rect.y -= margin;
+            rect.h += margin;
+        }
+    }
 }
 
 void DataScratchWidget::paintEvent(QPaintEvent *event)
@@ -215,20 +272,20 @@ void DataScratchWidget::resizeEvent(QResizeEvent *event)
         std::shared_lock lock(mScratcherMutex);
 
         for (const auto &s : mScratchers) {
-            s->Resize(*this);
+            s->CalculateSize(*this);
         }
     }
 
     if (event->oldSize().width() > 0 && event->oldSize().height() > 0) {
         uint64_t old_end = mDataViewRect.x_end();
-        mDataViewRect.h = clientRect().height() * mYScale;
-        mDataViewRect.w = clientRect().width() * mXScale;
+        mDataViewRect.h = GetClientRect().height() * mYScale;
+        mDataViewRect.w = GetClientRect().width() * mXScale;
         mDataViewRect.x = old_end - mDataViewRect.w;
     }
     else {
         std::clog << "Resize from zero" << std::endl;
-        if (mDataViewRect.w) mXScale = static_cast<double>(mDataViewRect.w) / clientRect().width();
-        if (mDataViewRect.h) mYScale = static_cast<double>(mDataViewRect.h) / clientRect().height();
+        if (mDataViewRect.w) mXScale = static_cast<double>(mDataViewRect.w) / GetClientRect().width();
+        if (mDataViewRect.h) mYScale = static_cast<double>(mDataViewRect.h) / GetClientRect().height();
     }
 
     for (const auto& h: m_data_view_listeners) {

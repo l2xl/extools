@@ -54,6 +54,7 @@ class MarketViewController : public QObject, public ViewController, public std::
     std::mutex mPendingRequestsMutex;
 
     std::shared_ptr<Scratcher> mPriceRuler;
+    std::shared_ptr<Scratcher> mPriceIndicator;
     std::shared_ptr<QuoteScratcher> mQuoteGraph;
 
     duration m_trade_group_time;

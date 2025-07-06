@@ -49,22 +49,22 @@ TEST_CASE("SingleBuoyAppend")
     
     // Check that data was processed
     //CHECK(quotes.first_buoy_timestamp() <= duration_cast<milliseconds>(base_time.time_since_epoch()).count());
-    CHECK(quotes.buoy_data().size() == 2);
+    CHECK(quotes.quotes().size() == 2);
 
-    CHECK(quotes.buoy_data().front().volume == 10);
-    CHECK(quotes.buoy_data().front().min == 50);
-    CHECK(quotes.buoy_data().front().max == 100);
-    CHECK(quotes.buoy_data().front().mean == 100);
+    CHECK(quotes.quotes().front().volume == 10);
+    CHECK(quotes.quotes().front().min == 50);
+    CHECK(quotes.quotes().front().max == 100);
+    CHECK(quotes.quotes().front().mean == 100);
 
-    CHECK(quotes.buoy_data().back().volume == 10);
-    CHECK(quotes.buoy_data().back().min == 100);
-    CHECK(quotes.buoy_data().back().max == 100);
-    CHECK(quotes.buoy_data().back().mean == 100);
+    CHECK(quotes.quotes().back().volume == 10);
+    CHECK(quotes.quotes().back().min == 100);
+    CHECK(quotes.quotes().back().max == 100);
+    CHECK(quotes.quotes().back().mean == 100);
 
-    CHECK(quotes.active_buoy().volume == 100);
-    CHECK(quotes.active_buoy().min == 100);
-    CHECK(quotes.active_buoy().max == 1000);
-    CHECK(quotes.active_buoy().mean == 1000);
+    CHECK(quotes.active_candle().volume == 100);
+    CHECK(quotes.active_candle().min == 100);
+    CHECK(quotes.active_candle().max == 1000);
+    CHECK(quotes.active_candle().mean == 1000);
 }
 
 TEST_CASE("TwoTradesAppend")
@@ -82,17 +82,17 @@ TEST_CASE("TwoTradesAppend")
     quotes.AppendTrades(trades, 2000, 100);
 
     // Check that data was processed
-    CHECK(quotes.buoy_data().size() == 1);
+    CHECK(quotes.quotes().size() == 1);
 
-    CHECK(quotes.buoy_data().back().volume == 110);
-    CHECK(quotes.buoy_data().back().min == 100);
-    CHECK(quotes.buoy_data().back().max == 300);
-    CHECK(quotes.buoy_data().back().mean == 290);
+    CHECK(quotes.quotes().back().volume == 110);
+    CHECK(quotes.quotes().back().min == 100);
+    CHECK(quotes.quotes().back().max == 300);
+    CHECK(quotes.quotes().back().mean == 290);
 
-    CHECK(quotes.active_buoy().volume == 0);
-    CHECK(quotes.active_buoy().min == 300);
-    CHECK(quotes.active_buoy().max == 300);
-    CHECK(quotes.active_buoy().mean == 300);
+    CHECK(quotes.active_candle().volume == 0);
+    CHECK(quotes.active_candle().min == 300);
+    CHECK(quotes.active_candle().max == 300);
+    CHECK(quotes.active_candle().mean == 300);
 }
 
 TEST_CASE("SimpleActiveCandle")
@@ -114,21 +114,21 @@ TEST_CASE("SimpleActiveCandle")
     CHECK(quotes.first_trade_timestamp() == 1000);
     CHECK(quotes.last_trade_timestamp() == 3000);
 
-    CHECK(quotes.buoy_data().size() == 2);
+    CHECK(quotes.quotes().size() == 2);
 
-    CHECK(quotes.buoy_data().front().volume == 10);
-    CHECK(quotes.buoy_data().front().min == 100);
-    CHECK(quotes.buoy_data().front().max == 100);
-    CHECK(quotes.buoy_data().front().mean == 100);
+    CHECK(quotes.quotes().front().volume == 10);
+    CHECK(quotes.quotes().front().min == 100);
+    CHECK(quotes.quotes().front().max == 100);
+    CHECK(quotes.quotes().front().mean == 100);
 
-    CHECK(quotes.buoy_data().back().volume == 20);
-    CHECK(quotes.buoy_data().back().min == 100);
-    CHECK(quotes.buoy_data().back().max == 200);
-    CHECK(quotes.buoy_data().back().mean == 200);
+    CHECK(quotes.quotes().back().volume == 20);
+    CHECK(quotes.quotes().back().min == 100);
+    CHECK(quotes.quotes().back().max == 200);
+    CHECK(quotes.quotes().back().mean == 200);
 
-    CHECK(quotes.active_buoy().volume == 30);
-    CHECK(quotes.active_buoy().min == 200);
-    CHECK(quotes.active_buoy().max == 300);
-    CHECK(quotes.active_buoy().mean == 300);
+    CHECK(quotes.active_candle().volume == 30);
+    CHECK(quotes.active_candle().min == 200);
+    CHECK(quotes.active_candle().max == 300);
+    CHECK(quotes.active_candle().mean == 300);
 }
 

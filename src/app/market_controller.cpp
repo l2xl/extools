@@ -33,14 +33,14 @@ MarketViewController::MarketViewController(size_t id, std::shared_ptr<DataScratc
     , m_trade_group_time(seconds(60))
 {
     auto now = std::chrono::utc_clock::now().time_since_epoch();
-    uint64_t start = std::chrono::duration_cast<milliseconds>(now - minutes(20)).count();
+    uint64_t start = std::chrono::duration_cast<milliseconds>(now - minutes(50)).count();
 
     QDateTime qstart;
     qstart.setMSecsSinceEpoch(start);
 
     std::clog << "Window start TS: " << std::string(qstart.toString(widget->locale().dateFormat(QLocale::ShortFormat)).toUtf8().data()) << std::endl;
 
-    uint64_t length = std::chrono::duration_cast<milliseconds>(minutes(30)).count();
+    uint64_t length = std::chrono::duration_cast<milliseconds>(minutes(60)).count();
 
     widget->DataViewRectChanged(Rectangle{start, std::numeric_limits<uint64_t>::max(), length, 1});
 
@@ -51,6 +51,7 @@ std::shared_ptr<MarketViewController> MarketViewController::Create(size_t id, st
     auto res = std::make_shared<MarketViewController>(id, widget, move(dataProvider), move(scheduler), EnsurePrivate{});
 
     widget->AddScratcher(std::make_shared<TimeRuler>());
+    widget->AddScratcher(std::make_shared<Margin>(0.05));
 
     std::weak_ptr ref = res;
 
@@ -65,10 +66,12 @@ std::shared_ptr<MarketViewController> MarketViewController::Create(size_t id, st
         if (auto self = ref.lock()) {
             if (auto widget = self->mWidget.lock()) {
                 if (self->mPriceRuler) widget->RemoveScratcher(self->mPriceRuler);
+                if (self->mPriceIndicator) widget->RemoveScratcher(self->mPriceIndicator);
                 if (self->mQuoteGraph) widget->RemoveScratcher(self->mQuoteGraph);
 
                 widget->AddScratcher(self->mPriceRuler = std::make_shared<PriceRuler>(self->mDataProvider->PricePoint()));
-                widget->AddScratcher(self->mQuoteGraph = std::make_shared<QuoteScratcher>(self->mDataProvider, self->m_trade_group_time), 0);
+                widget->AddScratcher(self->mPriceIndicator = std::make_shared<PriceIndicator>(self->mDataProvider));
+                widget->AddQuoteScratcher(self->mQuoteGraph = std::make_shared<QuoteScratcher>(self->mDataProvider, self->m_trade_group_time));
 
                 widget->update();
             }
@@ -126,8 +129,9 @@ void MarketViewController::Update()
         if (new_end > rect.x_end()) {
             rect.x = new_end - rect.w;
 
-            if (mQuoteGraph)
-                mQuoteGraph->CalculatePaint(rect);
+            for (auto& s: widget->Scratchers()) {
+                s->CalculatePaint(rect);
+            }
 
             UpdateDataViewRect(rect);
         }

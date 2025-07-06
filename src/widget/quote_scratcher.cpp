@@ -23,7 +23,7 @@
 
 namespace scratcher {
 
-void QuoteScratcher::Resize(DataScratchWidget &w)
+void QuoteScratcher::CalculateSize(DataScratchWidget &w)
 {
     m_pixel_duration = static_cast<uint64_t>(std::floor(w.GetDataViewRect().w / w.GetClientRect().width())) + 1;
 }
@@ -66,20 +66,25 @@ void QuoteScratcher::CalculatePaint(Rectangle& rect)
         uint64_t now_ts = get_timestamp(std::chrono::utc_clock::now());
         mQuotes.AppendTrades(std::ranges::subrange(start, end), now_ts, last_price);
 
-        for (const auto& buoy: mQuotes.buoy_data()) {
-            uint64_t max_price = std::max(rect.y_end(), buoy.max);
-            rect.y = std::min(rect.y, buoy.min);
-            rect.h = max_price - rect.y;
+        uint64_t max = 0;
+        uint64_t min = std::numeric_limits<uint64_t>::max();
+        for (const auto& buoy: mQuotes.quotes()) {
+            max = std::max(max, buoy.max);
+            min = std::min(min, buoy.min);
         }
+        max = std::max(max, mQuotes.active_candle().max);
+        min = std::min(min, mQuotes.active_candle().min);
 
-        std::clog << "Price range [" << rect.y << ", " << rect.y_end() << "]" << std::endl;
+        rect.y = min;
+        rect.h = max - min;
+//        std::clog << "Price range [" << rect.y_start() << ", " << rect.y_end() << "]" << std::endl;
     }
 }
 
 
 namespace {
 
-void PaintBuoy(const BuoyCandleQuotes& quotes, uint64_t buoy_ts, const auto& buoy, const auto& prev_buoy, DataScratchWidget &w)
+void PaintBuoy(const BuoyCandleQuotes& quotes, uint64_t buoy_ts, const auto& buoy, auto prev_buoy, DataScratchWidget &w)
 {
     QPainter p(&w);
     QPen greenPen(Qt::green, 1, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin);
@@ -123,12 +128,12 @@ void QuoteScratcher::Paint(DataScratchWidget &w) const
 
     if (mQuotes.first_buoy_timestamp()) {
         uint64_t buoy_time = *mQuotes.first_buoy_timestamp();
-        auto last_buoy_it = mQuotes.buoy_data().end();
-        for (auto buoy_it = mQuotes.buoy_data().begin(); buoy_it != mQuotes.buoy_data().end(); ++buoy_it) {
+        auto last_buoy_it = mQuotes.quotes().end();
+        for (auto buoy_it = mQuotes.quotes().begin(); buoy_it != mQuotes.quotes().end(); ++buoy_it) {
             if (buoy_time >= w.GetDataViewRect().x_start()) {
                 if (buoy_time + mQuotes.buoy_duration() > w.GetDataViewRect().x_end()) break;
 
-                PaintBuoy(mQuotes, buoy_time, *buoy_it, last_buoy_it == mQuotes.buoy_data().end() ? *buoy_it : *last_buoy_it, w);
+                PaintBuoy(mQuotes, buoy_time, *buoy_it, last_buoy_it == mQuotes.quotes().end() ? *buoy_it : *last_buoy_it, w);
             }
 
             buoy_time += mQuotes.buoy_duration();
@@ -136,10 +141,11 @@ void QuoteScratcher::Paint(DataScratchWidget &w) const
         }
 
         if (buoy_time >= w.GetDataViewRect().x_start() && buoy_time + mQuotes.buoy_duration() < w.GetDataViewRect().x_end()) {
-            if (mQuotes.buoy_data().empty())
-                PaintBuoy(mQuotes, buoy_time, mCurCandle, mCurCandle , w);
+            BuoyCandleQuotes::candle_t activeCandle = mQuotes.active_candle();
+            if (mQuotes.quotes().empty())
+                PaintBuoy(mQuotes, buoy_time, activeCandle, activeCandle , w);
             else
-                PaintBuoy(mQuotes, buoy_time, mCurCandle, mQuotes.buoy_data().back(), w);
+                PaintBuoy(mQuotes, buoy_time, activeCandle, mQuotes.quotes().back(), w);
         }
     }
 }

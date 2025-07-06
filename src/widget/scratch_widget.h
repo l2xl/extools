@@ -26,33 +26,58 @@
 #include "core_common.hpp"
 #include "timedef.hpp"
 #include "scratcher.hpp"
+#include "quote_scratcher.hpp"
 
 namespace scratcher {
-
-
 
 class TimeRuler : public Scratcher
 {
 public:
     ~TimeRuler() override = default;
-    void Resize(DataScratchWidget &widget) override;
+    void CalculateSize(DataScratchWidget &widget) override;
+    void CalculatePaint(Rectangle &) override {}
     void Paint(DataScratchWidget &widget) const override;
 };
 
 class PriceRuler : public Scratcher
 {
-    currency<uint64_t> point;
+    const currency<uint64_t> m_point;
 public:
-    PriceRuler(currency<uint64_t> p) : point(p) {}
+    PriceRuler(currency<uint64_t> p) : m_point(p) {}
     ~PriceRuler() override = default;
-    void Resize(DataScratchWidget &widget) override;
+    void CalculateSize(DataScratchWidget &widget) override;
+    void CalculatePaint(Rectangle &) override {}
     void Paint(DataScratchWidget &widget) const override;
+};
+
+class PriceIndicator : public Scratcher
+{
+    const currency<uint64_t> m_point;
+    std::shared_ptr<const IDataProvider> mDataManager;
+public:
+    PriceIndicator(std::shared_ptr<const IDataProvider> dataManager) : m_point(dataManager->PricePoint()), mDataManager(std::move(dataManager)) {}
+    ~PriceIndicator() override = default;
+    void CalculateSize(DataScratchWidget &widget) override {}
+    void CalculatePaint(Rectangle &) override {}
+    void Paint(DataScratchWidget &widget) const override;
+};
+
+class Margin : public Scratcher
+{
+    double m_margin_rate;
+public:
+    Margin(double margin_rate) : m_margin_rate(margin_rate) {}
+    ~Margin() override = default;
+    void CalculateSize(DataScratchWidget &widget) override {}
+    void CalculatePaint(Rectangle &) override;
+    void Paint(DataScratchWidget &widget) const override {}
 };
 
 class DataScratchWidget : public QWidget
 {
     friend class TimeRuler;
     friend class PriceRuler;
+    friend class PriceIndicator;
     friend class QuoteScratcher;
 
     Q_OBJECT
@@ -65,10 +90,12 @@ class DataScratchWidget : public QWidget
 
     std::list<std::function<void(DataScratchWidget& )>> m_data_view_listeners;
 
+    std::shared_ptr<QuoteScratcher> mQuoteScratcher;
     std::deque<std::shared_ptr<Scratcher>> mScratchers;
     std::shared_mutex mScratcherMutex;
 
     QRect& clientRect() { return mClientRect; }
+    const std::shared_ptr<QuoteScratcher>& quoteScratcher() { return mQuoteScratcher; }
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -89,8 +116,12 @@ public:
     int DataXToWidgetX(uint64_t x) const;
     int DataYToWidgetY(uint64_t x) const;
 
+    void AddQuoteScratcher(std::shared_ptr<QuoteScratcher> s) { AddScratcher(mQuoteScratcher = std::move(s), {0}); }
     void AddScratcher(std::shared_ptr<Scratcher> scratcher, std::optional<size_t> z_order = {});
     void RemoveScratcher(const std::shared_ptr<Scratcher> &scratcher);
+
+    const std::deque<std::shared_ptr<Scratcher>>& Scratchers() const
+    { return mScratchers; }
 
     template<typename PERIOD>
     std::vector<uint64_t> GetTimeTicks() const
@@ -110,8 +141,10 @@ public:
     std::vector<uint64_t> GetPriceTicks(uint64_t step) const
     {
         std::vector<uint64_t> ticks;
-        for (int tick = ((GetDataViewRect().y / step) + 1) * step; tick < GetDataViewRect().y_end(); tick += step) {
-            ticks.push_back(tick);
+        if (GetDataViewRect().y_start() != std::numeric_limits<uint64_t>::max()) {
+            for (int tick = ((GetDataViewRect().y / step) + 1) * step; tick < GetDataViewRect().y_end(); tick += step) {
+                ticks.push_back(tick);
+            }
         }
         return ticks;
     }
