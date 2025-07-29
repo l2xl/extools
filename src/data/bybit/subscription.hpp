@@ -21,7 +21,7 @@ struct ByBitSubscription
     { return dataManager && dataManager->IsReadyHandleData(); }
 
     void Handle(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& payload)
-    { if (dataManager) dataManager->HandleData(topic, type, payload); }
+    { if (dataManager) dataManager->HandleSubscriptionData(topic, type, payload); }
 
     void HandleError(boost::system::error_code ec)
     { if (dataManager) dataManager->HandleError(ec);}

@@ -62,7 +62,7 @@ std::shared_ptr<MarketViewController> MarketViewController::Create(size_t id, st
         }
     });
 
-    res->mDataProvider->AddInsctrumentDataUpdateHandler([ref]() {
+    res->mDataProvider->AddInsctrumentDataHandler([ref]() {
         if (auto self = ref.lock()) {
             if (auto widget = self->mWidget.lock()) {
                 if (self->mPriceRuler) widget->RemoveScratcher(self->mPriceRuler);
@@ -77,7 +77,7 @@ std::shared_ptr<MarketViewController> MarketViewController::Create(size_t id, st
             }
         }
     });
-    res->mDataProvider->AddMarketDataUpdateHandler([ref]() {
+    res->mDataProvider->AddNewTradeHandler([ref]() {
         if (auto self = ref.lock()) {
             self->OnMarketDataUpdate();
         }

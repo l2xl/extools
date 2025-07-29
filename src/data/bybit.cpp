@@ -169,7 +169,7 @@ awaitable<nlohmann::json> ByBitApi::coGetInstrumentInfo(std::shared_ptr<ByBitApi
     co_return co_await coRequestServer(move(self), buf.str());
 }
 
-awaitable<nlohmann::json> ByBitApi::coGetPublicTradeHistory(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription, time_point start, time_point end)
+awaitable<nlohmann::json> ByBitApi::coGetPublicTradeHistory(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription)
 {
     std::clog << "Creating Recent Trades request..." << std::endl;
     std::ostringstream buf;
@@ -182,16 +182,16 @@ awaitable<nlohmann::json> ByBitApi::coGetPublicTradeHistory(std::shared_ptr<ByBi
 
 void ByBitApi::SubscribePublicStream(const std::shared_ptr<ByBitSubscription>& subscription)
 {
+    auto ref = weak_from_this();
     if (m_public_spot_stream) {
         if (m_public_spot_stream->Status() == ByBitStream::status::STALE)
             throw std::runtime_error("Stale public stream");
 
     }
     else {
-        auto ref = weak_from_this();
 
         m_public_spot_stream = ByBitStream::Create(shared_from_this(), STREAM_PUBLIC_SPOT,
-            [ref](std::string&& data) { HandleConnectionData(ref, move(data)); },
+            [](std::shared_ptr<ByBitStream> stream, std::string&& data) { HandleConnectionData(move(stream), move(data)); },
             [ref](boost::system::error_code ec) { HandleConnectionError(ref, ec); });
 
     }
@@ -199,17 +199,22 @@ void ByBitApi::SubscribePublicStream(const std::shared_ptr<ByBitSubscription>& s
         std::array {
             SubscriptionTopic{"publicTrade", subscription->symbol},
             //SubscriptionTopic{"orderbook", 50, subscription->symbol},
+        },
+        [=]() {
+            if (auto self = ref.lock()) {
+                self->RequestRecentPublicTrades(subscription);
+            }
         }
     );
 }
 
-void ByBitApi::HandleConnectionData(std::weak_ptr<ByBitApi> ref, std::string&& data)
+void ByBitApi::HandleConnectionData(std::shared_ptr<ByBitStream> stream, std::string&& data)
 {
-    if (auto self = ref.lock()) {
+    if (auto self = stream->m_api.lock()) {
         self->m_data_queue.push(move(data));
 
-        post(self->m_data_queue_strand, [ref]() {
-            if (auto self = ref.lock()) {
+        post(self->m_data_queue_strand, [stream]() {
+            if (auto self = stream->m_api.lock()) {
 
                 /*self->m_data_queue.consume_all([ref](std::string data)*/
                 while (!self->m_data_queue.empty()) {
@@ -218,6 +223,11 @@ void ByBitApi::HandleConnectionData(std::weak_ptr<ByBitApi> ref, std::string&& d
                     if (payload.find("op") != payload.end()) {
                         self->m_data_queue.pop();
                         if (payload["success"]) {
+                            size_t op_id = std::stoul(payload["req_id"].get<std::string>());
+                            auto it = stream->m_subscribe_callbacks.find(op_id);
+                            if (it != stream->m_subscribe_callbacks.end())
+                                it->second();
+
                             std::clog << payload["op"] << '/' <<payload["req_id"] << ": " << payload["success"] << std::endl;
                         }
                         else {
@@ -355,19 +365,18 @@ void ByBitApi::Unsubscribe(const std::string& symbol)
     }
 }
 
-void ByBitApi::RequestRecentPublicTrades(std::shared_ptr<ByBitSubscription> subscription, std::shared_ptr<ByBitDataManager> manager,
-    time_point start, time_point end)
+void ByBitApi::RequestRecentPublicTrades(std::shared_ptr<ByBitSubscription> subscription)
 {
-    co_spawn(mScheduler->io(), coGetPublicTradeHistory(shared_from_this(), subscription, start, end),
+    co_spawn(mScheduler->io(), coGetPublicTradeHistory(shared_from_this(), subscription),
         [self = shared_from_this(), subscription](std::exception_ptr e, nlohmann::json resp) {
             if (e) {
-                std::cerr << "Instrument error!!!" << std::endl;
+                std::cerr << "Request public trades error!!!" << std::endl;
             }
             if (resp["result"].is_object()) {
-                subscription->dataManager->HandlePublicTrades(resp["result"]);
-                std::clog << "Public Trades  received" << std::endl;
+                subscription->dataManager->HandlePublicTradeSnapshot(resp["result"]);
+                std::clog << "Public Trades received" << std::endl;
             }
-            else std::cerr << "InstrumentsInfo response contains no \"result\" section" << std::endl;
+            else std::cerr << "Public Trades response contains no \"result\" section" << std::endl;
         });
 }
 }

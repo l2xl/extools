@@ -15,6 +15,7 @@
 #include <boost/beast.hpp>
 #include <boost/beast/ssl.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/container/flat_map.hpp>
 
 namespace scratcher::bybit {
 
@@ -88,18 +89,19 @@ private:
 
     std::atomic_uint32_t m_req_counter = 0;
 
-    std::function<void(std::string&&)> m_data_callback;
+    std::function<void(std::shared_ptr<ByBitStream>, std::string&&)> m_data_callback;
     std::function<void(boost::system::error_code)> m_error_callback;
+    boost::container::flat_map<size_t, std::function<void()>> m_subscribe_callbacks;
 
     static awaitable<void> coHeartbeat(std::weak_ptr<ByBitStream> ref);
     static awaitable<void> coOpenWebSocketStream(std::shared_ptr<ByBitStream>);
     static awaitable<std::string> coReadWebSocketStream(std::shared_ptr<ByBitStream>);
     static awaitable<void> coMessage(std::shared_ptr<ByBitStream> self, std::string message);
 
-    std::string SubscribeMessage(const auto& topics, bool subscribe)
+    static std::string SubscribeMessage(const auto& topics, bool subscribe, size_t counter)
     {
         std::ostringstream buf;
-        buf << R"({"req_id":")" << ++m_req_counter << R"(","op":")" << (subscribe ? "subscribe" : "unsubscribe") << R"(","args":[)";
+        buf << R"({"req_id":")" << counter << R"(","op":")" << (subscribe ? "subscribe" : "unsubscribe") << R"(","args":[)";
         for (const auto& topic: topics)
             buf << "\"" << topic << "\",";
         buf.seekp(-1, buf.end);
@@ -110,20 +112,28 @@ private:
     struct EnsurePrivate {};
 
 public:
-    ByBitStream(std::shared_ptr<ByBitApi> api, std::string spec, std::function<void(std::string&&)> data_callback, std::function<void(boost::system::error_code)> error_callback, EnsurePrivate);
+    ByBitStream(std::shared_ptr<ByBitApi> api, std::string spec,
+        std::function<void(std::shared_ptr<ByBitStream>, std::string&&)> data_callback,
+        std::function<void(boost::system::error_code)> error_callback, EnsurePrivate);
     ~ByBitStream();
 
-    static std::shared_ptr<ByBitStream> Create(std::shared_ptr<ByBitApi> api, std::string path_spec, std::function<void(std::string&&)> callback, std::function<void(boost::system::error_code)> error_callback);
+    static std::shared_ptr<ByBitStream> Create(std::shared_ptr<ByBitApi> api, std::string path_spec,
+        std::function<void(std::shared_ptr<ByBitStream>, std::string&&)> data_callback,
+        std::function<void(boost::system::error_code)> error_callback);
     static awaitable<void> coExecute(std::weak_ptr<ByBitStream> ref);
 
     status Status() const
     { return m_status; }
 
-    void SubscribeTopics(const auto& topics)
-    { co_spawn(m_strand, coMessage(shared_from_this(), SubscribeMessage(topics, true)), boost::asio::detached); }
+    void SubscribeTopics(const auto& topics, std::function<void()> success_callback)
+    {
+        size_t counter = ++m_req_counter;
+        m_subscribe_callbacks[counter] = std::move(success_callback);
+        co_spawn(m_strand, coMessage(shared_from_this(), SubscribeMessage(topics, true, counter)), boost::asio::detached);
+    }
 
     void UnsubscribeTopics(auto topics)
-    { co_spawn(m_strand, coMessage(shared_from_this(), SubscribeMessage(topics, false)), boost::asio::detached); }
+    { co_spawn(m_strand, coMessage(shared_from_this(), SubscribeMessage(topics, false, ++m_req_counter)), boost::asio::detached); }
 };
 
 }

@@ -38,6 +38,17 @@ struct ByBitSubscription;
 class ByBitApi;
 class SubscriptionTopic;
 
+struct InsctrumentMetaData
+{
+    currency<uint64_t> m_price_point;
+    currency<uint64_t> m_price_precision;
+    currency<uint64_t> m_volume_point;
+    currency<uint64_t> m_volume_precision;
+    currency<uint64_t> m_min_volume; // Min order volume
+    currency<uint64_t> m_max_volume; // Max order volume
+    currency<uint64_t> m_min_amount; // Min order amount/cost
+    currency<uint64_t> m_max_amount; // Max order amount/cost
+};
 
 class ByBitDataManager: public IDataProvider, public std::enable_shared_from_this<ByBitDataManager>
 {
@@ -45,14 +56,7 @@ class ByBitDataManager: public IDataProvider, public std::enable_shared_from_thi
     std::shared_ptr<ByBitApi> mApi;
     std::shared_ptr<ByBitSubscription> mSubscription;
 
-    std::optional<currency<uint64_t>> m_price_point;
-    std::optional<currency<uint64_t>> m_price_precision;
-    std::optional<currency<uint64_t>> m_volume_point;
-    std::optional<currency<uint64_t>> m_volume_precision;
-    std::optional<currency<uint64_t>> m_min_volume; // Min order volume
-    std::optional<currency<uint64_t>> m_max_volume; // Max order volume
-    std::optional<currency<uint64_t>> m_min_amount; // Min order amount/cost
-    std::optional<currency<uint64_t>> m_max_amount; // Max order amount/cost
+    std::optional<InsctrumentMetaData> m_instrument_metadata;
 
     pubtrade_cache_t m_pubtrade_cache;
 
@@ -60,7 +64,8 @@ class ByBitDataManager: public IDataProvider, public std::enable_shared_from_thi
     boost::container::flat_map<uint64_t, uint64_t> m_order_book_asks;
 
     std::list<std::function<void()>> m_instrument_handlers;
-    std::list<std::function<void()>> m_marketdata_handlers;
+    std::list<std::function<void()>> m_trade_handlers;
+    std::list<std::function<void()>> m_orderbook_handlers;
 
     struct EnsurePrivate {};
 public:
@@ -73,7 +78,7 @@ public:
     { return m_symbol; }
 
     currency<uint64_t> PricePoint() const override
-    { return m_price_point.value_or(currency<uint64_t>(0, 0)); }
+    { return m_instrument_metadata ? m_instrument_metadata->m_price_point : currency<uint64_t>(0, 0); }
 
     const pubtrade_cache_t& PublicTradeCache() const override
     { return m_pubtrade_cache; }
@@ -86,15 +91,18 @@ public:
 
     void HandleInstrumentData(const nlohmann::json& data);
     bool IsReadyHandleData() const
-    { return m_price_point && m_volume_point; }
+    { return m_instrument_metadata.has_value(); }
 
-    void HandlePublicTrades(const nlohmann::json& data);
+    void HandlePublicTradeSnapshot(const nlohmann::json& data);
 
-    void HandleData(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& data);
+    void HandleSubscriptionData(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& data);
     void HandleError(boost::system::error_code ec);
 
-    void AddInsctrumentDataUpdateHandler(std::function<void()> h) override;
-    void AddMarketDataUpdateHandler(std::function<void()> h) override;
+    void AddInsctrumentDataHandler(std::function<void()> h) override;
+    void AddNewTradeHandler(std::function<void()> h) override
+    { m_trade_handlers.emplace_back(std::move(h)); }
+    void AddOrderBookUpdateHandler(std::function<void()> h) override
+    { m_orderbook_handlers.emplace_back(std::move(h)); }
 };
 
 } // scratcher::bybit

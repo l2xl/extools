@@ -26,8 +26,9 @@
 
 namespace scratcher {
 
+enum class MarketDataType:unsigned { TRADE, ORDERBOOK};
 
-enum class TradeSide:uint8_t { SELL, BUY };
+enum class TradeSide:unsigned { SELL, BUY };
 
 struct Trade
 {
@@ -50,8 +51,9 @@ struct IDataProvider
 
     virtual const std::string& Symbol() const = 0;
 
-    virtual void AddInsctrumentDataUpdateHandler(std::function<void()> h) = 0;
-    virtual void AddMarketDataUpdateHandler(std::function<void()> h) = 0;
+    virtual void AddInsctrumentDataHandler(std::function<void()> h) = 0;
+    virtual void AddNewTradeHandler(std::function<void()> h) = 0;
+    virtual void AddOrderBookUpdateHandler(std::function<void()> h) = 0;
 
     virtual currency<uint64_t> PricePoint() const = 0;
 

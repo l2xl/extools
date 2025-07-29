@@ -38,11 +38,13 @@ SubscriptionTopic SubscriptionTopic::Parse(std::string topic)
 }
 
 
-ByBitStream::ByBitStream(std::shared_ptr<ByBitApi> api, std::string spec, std::function<void(std::string&&)> callback, std::function<void(boost::system::error_code)> error_callback, EnsurePrivate)
+ByBitStream::ByBitStream(std::shared_ptr<ByBitApi> api, std::string spec,
+                         std::function<void(std::shared_ptr<ByBitStream>, std::string&&)> data_callback,
+                         std::function<void(boost::system::error_code)> error_callback, EnsurePrivate)
     : m_api(api), m_path_spec(move(spec)), m_status(status::INIT)
     , m_strand(make_strand(api->Scheduler()->io()))
     , m_heartbeat_timer(m_strand, seconds(15))
-    , m_data_callback(move(callback)), m_error_callback(move(error_callback))
+    , m_data_callback(move(data_callback)), m_error_callback(move(error_callback))
 {
 }
 
@@ -53,9 +55,10 @@ ByBitStream::~ByBitStream()
 }
 
 std::shared_ptr<ByBitStream> ByBitStream::Create(std::shared_ptr<ByBitApi> api, std::string path_spec,
-    std::function<void(std::string &&)> callback, std::function<void(boost::system::error_code)> error_callback)
+    std::function<void(std::shared_ptr<ByBitStream>, std::string &&)> data_callback,
+    std::function<void(boost::system::error_code)> error_callback)
 {
-    auto stream = std::make_shared<ByBitStream>(api, move(path_spec), callback, error_callback, EnsurePrivate());
+    auto stream = std::make_shared<ByBitStream>(api, move(path_spec), move(data_callback), move(error_callback), EnsurePrivate());
 
     co_spawn(stream->m_strand, coExecute(stream), detached);
     co_spawn(stream->m_strand, coHeartbeat(stream), detached);
@@ -82,7 +85,7 @@ awaitable<void> ByBitStream::coExecute(std::weak_ptr<ByBitStream> ref)
 
         if (auto self = ref.lock()) {
             for (;;)
-                self->m_data_callback(co_await coReadWebSocketStream(self));
+                self->m_data_callback(self, co_await coReadWebSocketStream(self));
         }
         co_return;
     }
