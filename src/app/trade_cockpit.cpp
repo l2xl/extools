@@ -45,7 +45,7 @@ TradeCockpitWindow::TradeCockpitWindow(std::shared_ptr<scratcher::AsioScheduler>
     marketView->setMinimumSize(640, 480);
     
     // Initialize market data and controller
-    mMarketData = scratcher::bybit::ByBitDataManager::Create("BTCUSDC", mMarketApi);
+    mMarketData = scratcher::bybit::ByBitDataManager::Create(mMarketApi, {});
 
     // Create the initial panel with the market view
     auto contentFrame= createGridCell(*ui->gridLayout, 0, 0);
@@ -54,8 +54,7 @@ TradeCockpitWindow::TradeCockpitWindow(std::shared_ptr<scratcher::AsioScheduler>
     contentFrame.release();
 
     size_t panel_id = m_next_panel_id++;
-    mControllers[panel_id] = std::static_pointer_cast<scratcher::ViewController>(scratcher::MarketViewController::Create(panel_id, marketView, mMarketData, std::move(scheduler)));
-
+    mControllers[panel_id] = std::static_pointer_cast<scratcher::ViewController>(scratcher::MarketViewController::Create(panel_id, "BTCUSDC", marketView, mMarketData, std::move(scheduler)));
 }
 
 
@@ -140,7 +139,7 @@ std::unique_ptr<ContentFrameWidget> TradeCockpitWindow::createTab(QTabWidget& ta
 std::unique_ptr<ContentFrameWidget> TradeCockpitWindow::createPanel(QLayout& layout)
 {
     auto contentFrame = std::make_unique<ContentFrameWidget>();
-    contentFrame->setTitle(QString::fromUtf8(mMarketData->Symbol()));
+    contentFrame->setTitle(QString::fromUtf8(mMarketData->Name()));
     contentFrame->setMinimumSize(QSize(640, 480));
     layout.addWidget(contentFrame.get());
 

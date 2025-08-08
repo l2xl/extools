@@ -8,11 +8,13 @@
 #include "bybit.hpp"
 #include "scheduler.hpp"
 
-#include "nlohmann/json.hpp"
+
+#include <glaze/glaze.hpp>
 
 #include <openssl/hmac.h>
 #include <boost/lexical_cast.hpp>
-
+#include <boost/beast.hpp>
+#include <boost/beast/ssl.hpp>
 
 #include <chrono>
 #include <sstream>
@@ -25,6 +27,10 @@
 namespace scratcher::bybit {
 
 namespace ip = boost::asio::ip;
+
+} // namespace scratcher::bybit
+
+namespace scratcher::bybit {
 
 namespace {
 
@@ -76,7 +82,7 @@ awaitable<ip::tcp::resolver::results_type> ByBitApi::coResolve(boost::asio::ip::
     co_return co_await resolver.async_resolve(host, port, boost::asio::use_awaitable);
 }
 
-awaitable<nlohmann::json> ByBitApi::coRequestServer(std::shared_ptr<ByBitApi> self, std::string_view request_string)
+awaitable<std::string> ByBitApi::coRequestServerRaw(std::shared_ptr<ByBitApi> self, std::string_view request_string)
 {
     while (!self->m_is_http_resolved) {
         std::clog << "Waiting for resolve..." << std::endl;
@@ -87,8 +93,6 @@ awaitable<nlohmann::json> ByBitApi::coRequestServer(std::shared_ptr<ByBitApi> se
     if (self->m_resolved_http_host.empty()) throw xscratcher_error_code(error::no_host_name);
 
     boost::beast::ssl_stream<boost::beast::tcp_stream> sock(co_await boost::asio::this_coro::executor, self->mScheduler->ssl());
-
-    auto start_time = std::chrono::utc_clock::now();
 
     co_await get_lowest_layer(sock).async_connect(self->m_resolved_http_host, boost::asio::use_awaitable);
 
@@ -107,26 +111,14 @@ awaitable<nlohmann::json> ByBitApi::coRequestServer(std::shared_ptr<ByBitApi> se
     boost::beast::http::response<boost::beast::http::string_body> resp;
     co_await boost::beast::http::async_read(sock, buf, resp, boost::asio::use_awaitable);
 
-    if (resp.result() == boost::beast::http::status::ok) {
-        std::clog << "resp body: " << resp.body() << std::endl;
-        auto resp_json = nlohmann::json::parse(resp.body().begin(), resp.body().end());
-
-        if (resp_json["retCode"] == 0) {
-            auto end_time = std::chrono::utc_clock::now();
-            std::chrono::utc_clock::time_point server_time = std::chrono::time_point<std::chrono::utc_clock>(milliseconds(resp_json["time"].get<long>()));
-            self->CalcServerTime(server_time, start_time, end_time);
-
-            co_return resp_json;
-        }
-        else {
-            std::cerr << "bybit returned error: " << resp_json["retMsg"] << std::endl;
-            throw boost::system::error_code(resp_json["retCode"].get<int>(), bybit_error_category());
-        }
-    }
-    else {
+    if (resp.result() != boost::beast::http::status::ok) {
         std::cerr << "http returned error: " << resp.reason() << std::endl;
         throw boost::system::error_code(resp.result_int(), bybit_error_category());
     }
+
+    std::clog << "resp body: " << resp.body() << std::endl;
+    co_return resp.body();
+
 }
 
 void ByBitApi::Resolve()
@@ -137,6 +129,7 @@ void ByBitApi::Resolve()
         [self = shared_from_this()](std::exception_ptr e, ip::tcp::resolver::results_type names) {
             if (e) {
                 std::cerr << "Resolve error!!!" << std::endl;
+                return;
             }
             self->m_resolved_http_host = move(names);
             self->m_is_http_resolved = true;
@@ -147,6 +140,7 @@ void ByBitApi::Resolve()
         [self = shared_from_this()](std::exception_ptr e, ip::tcp::resolver::results_type names) {
             if (e) {
                 std::cerr << "Resolve error!!!" << std::endl;
+                return;
             }
             self->m_resolved_websock_host = move(names);
             self->m_is_websock_resolved = true;
@@ -157,25 +151,35 @@ void ByBitApi::Resolve()
 awaitable<void> ByBitApi::DoPing(std::shared_ptr<ByBitApi> self)
 {
     std::clog << "Trying to connect: " << REQ_TIME << std::endl;
-    co_await coRequestServer(move(self), REQ_TIME);
+    co_await coRequestServer<TimeResponse>(move(self), REQ_TIME);
 }
 
-awaitable<nlohmann::json> ByBitApi::coGetInstrumentInfo(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription)
+awaitable<InstrumentResponse> ByBitApi::coGetInstrumentInfo(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription)
 {
-    std::clog << "Creating Instrument request..." << std::endl;
+    std::clog << "Creating All Spot Instruments request..." << std::endl;
     std::ostringstream buf;
     buf << REQ_INSTRUMENT << "?category=spot&symbol=" << subscription->symbol;
     std::clog << "Requesting instrument..." << std::endl;
-    co_return co_await coRequestServer(move(self), buf.str());
+    co_return co_await coRequestServer<InstrumentResponse>(move(self), buf.str());
 }
 
-awaitable<nlohmann::json> ByBitApi::coGetPublicTradeHistory(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription)
+awaitable<PublicTradeResponse> ByBitApi::coGetPublicTradeHistory(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription)
 {
     std::clog << "Creating Recent Trades request..." << std::endl;
     std::ostringstream buf;
     buf << REQ_PUBLIC_TRADES << "?category=spot&symbol=" << subscription->symbol;
     std::clog << "Requesting Recent Trades..." << std::endl;
-    co_return co_await coRequestServer(move(self), buf.str());
+    co_return co_await coRequestServer<PublicTradeResponse>(move(self), buf.str());
+}
+
+awaitable<InstrumentResponse> ByBitApi::coGetInstruments(std::shared_ptr<ByBitApi> self)
+{
+    std::clog << "Creating All Spot Instruments request..." << std::endl;
+    std::ostringstream buf;
+    buf << REQ_INSTRUMENT << "?category=spot";
+    std::clog << "Requesting all instruments..." << std::endl;
+    
+    co_return co_await coRequestServer<InstrumentResponse>(self, buf.str());
 }
 
 
@@ -218,25 +222,25 @@ void ByBitApi::HandleConnectionData(std::shared_ptr<ByBitStream> stream, std::st
 
                 /*self->m_data_queue.consume_all([ref](std::string data)*/
                 while (!self->m_data_queue.empty()) {
-                    auto payload = nlohmann::json::parse(self->m_data_queue.front());
+                    auto payload = glz::read_json<glz::json_t>(self->m_data_queue.front()).value_or(glz::json_t{});
 
-                    if (payload.find("op") != payload.end()) {
+                    if (payload.contains("op")) {
                         self->m_data_queue.pop();
-                        if (payload["success"]) {
+                        if (payload["success"].get<bool>()) {
                             size_t op_id = std::stoul(payload["req_id"].get<std::string>());
                             auto it = stream->m_subscribe_callbacks.find(op_id);
                             if (it != stream->m_subscribe_callbacks.end())
                                 it->second();
 
-                            std::clog << payload["op"] << '/' <<payload["req_id"] << ": " << payload["success"] << std::endl;
+                            std::clog << payload["op"].get<std::string>() << '/' << payload["req_id"].get<std::string>() << ": " << payload["success"].get<bool>() << std::endl;
                         }
                         else {
-                            std::cerr << payload["op"] << '/' <<payload["req_id"] << ": " << payload["success"] << std::endl;
+                            std::cerr << payload["op"].get<std::string>() << '/' << payload["req_id"].get<std::string>() << ": " << payload["success"].get<bool>() << std::endl;
                         }
                     }
-                    else if (payload.find("topic") != payload.end()) {
+                    else if (payload.contains("topic")) {
                         //if (auto self = ref.lock()) {
-                            auto topic = SubscriptionTopic::Parse(payload["topic"]);
+                            auto topic = SubscriptionTopic::Parse(payload["topic"].get<std::string>());
                             if (topic.Symbol()) {
                                 auto subscript_it = self->m_subscriptions.find(std::string(*topic.Symbol()));
                                 if (subscript_it != self->m_subscriptions.end()) {
@@ -326,17 +330,17 @@ std::shared_ptr<ByBitSubscription> ByBitApi::Subscribe(const std::string& symbol
         }
     }
 
-    co_spawn(mScheduler->io(), coGetInstrumentInfo(shared_from_this(), subscription),
-        [self = shared_from_this(), subscription](std::exception_ptr e, nlohmann::json resp) {
-            if (e) {
-                std::cerr << "Instrument error!!!" << std::endl;
-            }
-            if (resp["result"].is_object()) {
-                subscription->dataManager->HandleInstrumentData(resp["result"]);
-                std::clog << "Instrument data received" << std::endl;
-            }
-            else std::cerr << "InstrumentsInfo response contains no \"result\" section" << std::endl;
-        });
+    // co_spawn(mScheduler->io(), coGetInstrumentInfo(shared_from_this(), subscription),
+    //     [self = shared_from_this(), subscription](std::exception_ptr e, PaginatedResponse<Instrument> paginated_resp) {
+    //         if (e) {
+    //             std::cerr << "Instrument error!!!" << std::endl;
+    //             return;
+    //         }
+    //
+    //         // Directly pass the instruments to HandleAllInstrumentsData
+    //         subscription->dataManager->HandleAllInstrumentsData(paginated_resp.list);
+    //         std::clog << "Instrument data received" << std::endl;
+    //     });
 
     SubscribePublicStream(subscription);
 
@@ -365,18 +369,37 @@ void ByBitApi::Unsubscribe(const std::string& symbol)
     }
 }
 
+void ByBitApi::FetchCommonData(std::shared_ptr<ByBitDataManager> dataManager)
+{
+    co_spawn(mScheduler->io(), coGetInstruments(shared_from_this()),
+        [dataManager](std::exception_ptr e, InstrumentResponse response) {
+            if (e) {
+                try {
+                    std::rethrow_exception(e);
+                }
+                catch (std::exception& e) {
+                    std::cerr << "Fetch common data error: " << e.what() << std::endl;
+                }
+                catch (...) {
+                    std::cerr << "Fetch common data error: unknown" << std::endl;
+                }
+                return;
+            }
+            std::clog << "Common data (" << response.result.list.size() << " spot instruments) received" << std::endl;
+            dataManager->ConsumeInstrumentsData(move(response.result.list));
+        });
+}
+
 void ByBitApi::RequestRecentPublicTrades(std::shared_ptr<ByBitSubscription> subscription)
 {
     co_spawn(mScheduler->io(), coGetPublicTradeHistory(shared_from_this(), subscription),
-        [self = shared_from_this(), subscription](std::exception_ptr e, nlohmann::json resp) {
+        [self = shared_from_this(), subscription](std::exception_ptr e, PublicTradeResponse resp) {
             if (e) {
                 std::cerr << "Request public trades error!!!" << std::endl;
+                return;
             }
-            if (resp["result"].is_object()) {
-                subscription->dataManager->HandlePublicTradeSnapshot(resp["result"]);
-                std::clog << "Public Trades received" << std::endl;
-            }
-            else std::cerr << "Public Trades response contains no \"result\" section" << std::endl;
+            subscription->dataManager->HandlePublicTradeSnapshot(resp.result);
+            std::clog << "Public Trades received (" << resp.result.list.size() << " trades)" << std::endl;
         });
 }
 }

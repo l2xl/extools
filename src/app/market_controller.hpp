@@ -20,7 +20,7 @@
 #include <QObject>
 
 #include "timedef.hpp"
-#include "core_common.hpp"
+#include "data_rectangle.hpp"
 #include "view_controller.hpp"
 
 
@@ -29,6 +29,7 @@ namespace scratcher {
 class AsioScheduler;
 class DataScratchWidget;
 class IDataProvider;
+class IDataController;
 class Scratcher;
 class QuoteScratcher;
 
@@ -44,8 +45,9 @@ class MarketViewController : public QObject, public ViewController, public std::
 {
     Q_OBJECT
 
+    const std::string m_symbol;
     std::weak_ptr<DataScratchWidget> mWidget;
-    std::shared_ptr<IDataProvider> mDataProvider;
+    std::shared_ptr<IDataController> mDataController;
     std::shared_ptr<AsioScheduler> mScheduler;
 
     duration m_end_gap;
@@ -65,9 +67,9 @@ signals:
     void UpdateDataViewRect(Rectangle rect);
 
 public:
-    MarketViewController(size_t id, std::shared_ptr<DataScratchWidget> , std::shared_ptr<IDataProvider>, std::shared_ptr<AsioScheduler>, EnsurePrivate);
+    MarketViewController(size_t id, std::string symbol, std::shared_ptr<DataScratchWidget> , std::shared_ptr<IDataController>, std::shared_ptr<AsioScheduler>, EnsurePrivate);
 
-    static std::shared_ptr<MarketViewController> Create(size_t id, std::shared_ptr<DataScratchWidget>, std::shared_ptr<IDataProvider>, std::shared_ptr<AsioScheduler>);
+    static std::shared_ptr<MarketViewController> Create(size_t id, std::string symbol, std::shared_ptr<DataScratchWidget>, std::shared_ptr<IDataController>, std::shared_ptr<AsioScheduler>);
 
     void OnDataViewChange(uint64_t view_start, uint64_t view_end);
     void OnMarketDataUpdate();

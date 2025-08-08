@@ -18,7 +18,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "buoy_candle.hpp"
-#include "core_common.hpp"
+#include "data_rectangle.hpp"
 
 using namespace scratcher;
 

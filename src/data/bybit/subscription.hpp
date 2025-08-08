@@ -18,9 +18,9 @@ struct ByBitSubscription
     std::shared_ptr<ByBitDataManager> dataManager;
 
     bool IsReady() const
-    { return dataManager && dataManager->IsReadyHandleData(); }
+    { return dataManager && dataManager->GetDataProvider(symbol)->IsReadyHandleData(); }
 
-    void Handle(const SubscriptionTopic& topic, const std::string& type, const nlohmann::json& payload)
+    void Handle(const SubscriptionTopic& topic, const std::string& type, const glz::json_t& payload)
     { if (dataManager) dataManager->HandleSubscriptionData(topic, type, payload); }
 
     void HandleError(boost::system::error_code ec)

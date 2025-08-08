@@ -23,7 +23,7 @@
 #include <QResizeEvent>
 
 #include "currency.hpp"
-#include "core_common.hpp"
+#include "data_rectangle.hpp"
 #include "timedef.hpp"
 #include "scratcher.hpp"
 #include "quote_scratcher.hpp"

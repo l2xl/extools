@@ -15,3 +15,7 @@ It aims to provide
 4. Engine to test automated strategies on historical data
 
 5. Extensible set of plugins to connect to different exchanges, crypto-exchanges at first
+
+## Documentation
+
+- [Project Design & Development Context](PROJECT_DESIGN.md) - Architecture decisions, development workflow, and session continuity

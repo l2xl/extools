@@ -22,44 +22,42 @@
 #include <tbb/concurrent_vector.h>
 
 #include "currency.hpp"
-#include "timedef.hpp"
+#include "entities/trade.hpp"
 
 namespace scratcher {
 
-enum class MarketDataType:unsigned { TRADE, ORDERBOOK};
+enum class SourceType:unsigned { CACHE, MARKET };
 
-enum class TradeSide:unsigned { SELL, BUY };
-
-struct Trade
-{
-    std::string id;
-    time_point trade_time;
-
-    uint64_t price_points;
-    uint64_t volume_points;
-
-    TradeSide side;
-};
+enum class MarketDataType:unsigned { TRADE, ORDERBOOK };
 
 struct Scratcher;
 
 struct IDataProvider
 {
-    typedef tbb::concurrent_vector<Trade> pubtrade_cache_t;
+    typedef tbb::concurrent_vector<data::PublicTrade> pubtrade_cache_t;
 
     virtual ~IDataProvider() = default;
 
     virtual const std::string& Symbol() const = 0;
+    virtual std::string GetInstrumentMetadata() const = 0;
 
-    virtual void AddInsctrumentDataHandler(std::function<void()> h) = 0;
-    virtual void AddNewTradeHandler(std::function<void()> h) = 0;
-    virtual void AddOrderBookUpdateHandler(std::function<void()> h) = 0;
+    virtual bool IsReadyHandleData() const = 0;
 
     virtual currency<uint64_t> PricePoint() const = 0;
 
     virtual const pubtrade_cache_t& PublicTradeCache() const = 0;
     virtual const boost::container::flat_map<uint64_t, uint64_t>& Bids() const = 0;
     virtual const boost::container::flat_map<uint64_t, uint64_t>& Asks() const = 0;
+};
+
+struct IDataController
+{
+    virtual ~IDataController() = default;
+    virtual const std::string& Name() const = 0;
+    virtual std::shared_ptr<IDataProvider> GetDataProvider(const std::string& id) = 0;
+    virtual void AddInsctrumentDataHandler(std::function<void(const std::string&, SourceType)> h) = 0;
+    virtual void AddNewTradeHandler(std::function<void(const std::string&, SourceType)> h) = 0;
+    virtual void AddOrderBookUpdateHandler(std::function<void(const std::string&, SourceType)> h) = 0;
 };
 
 

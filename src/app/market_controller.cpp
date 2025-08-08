@@ -27,8 +27,8 @@
 namespace scratcher {
 
 
-MarketViewController::MarketViewController(size_t id, std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider, std::shared_ptr<AsioScheduler> scheduler, EnsurePrivate)
-    : ViewController(id), mWidget(widget), mDataProvider(dataProvider)
+MarketViewController::MarketViewController(size_t id, std::string symbol, std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataController> dataController, std::shared_ptr<AsioScheduler> scheduler, EnsurePrivate)
+    : ViewController(id), m_symbol(move(symbol)), mWidget(widget), mDataController(dataController)
     , m_end_gap(minutes(10))
     , m_trade_group_time(seconds(60))
 {
@@ -46,9 +46,9 @@ MarketViewController::MarketViewController(size_t id, std::shared_ptr<DataScratc
 
 }
 
-std::shared_ptr<MarketViewController> MarketViewController::Create(size_t id, std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataProvider> dataProvider, std::shared_ptr<AsioScheduler> scheduler)
+std::shared_ptr<MarketViewController> MarketViewController::Create(size_t id, std::string symbol, std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataController> dataController, std::shared_ptr<AsioScheduler> scheduler)
 {
-    auto res = std::make_shared<MarketViewController>(id, widget, move(dataProvider), move(scheduler), EnsurePrivate{});
+    auto res = std::make_shared<MarketViewController>(id, move(symbol), widget, move(dataController), move(scheduler), EnsurePrivate{});
 
     widget->AddScratcher(std::make_shared<TimeRuler>());
     widget->AddScratcher(std::make_shared<Margin>(0.05));
@@ -62,22 +62,27 @@ std::shared_ptr<MarketViewController> MarketViewController::Create(size_t id, st
         }
     });
 
-    res->mDataProvider->AddInsctrumentDataHandler([ref]() {
+    res->mDataController->AddInsctrumentDataHandler([ref](const std::string& symbol, SourceType source) {
         if (auto self = ref.lock()) {
-            if (auto widget = self->mWidget.lock()) {
-                if (self->mPriceRuler) widget->RemoveScratcher(self->mPriceRuler);
-                if (self->mPriceIndicator) widget->RemoveScratcher(self->mPriceIndicator);
-                if (self->mQuoteGraph) widget->RemoveScratcher(self->mQuoteGraph);
+            if (self->m_symbol == symbol) {
+                if (auto widget = self->mWidget.lock()) {
+                    auto dataProvider = self->mDataController->GetDataProvider(self->m_symbol);
+                    if (dataProvider->IsReadyHandleData()) {
+                        if (self->mPriceRuler) widget->RemoveScratcher(self->mPriceRuler);
+                        if (self->mPriceIndicator) widget->RemoveScratcher(self->mPriceIndicator);
+                        if (self->mQuoteGraph) widget->RemoveScratcher(self->mQuoteGraph);
 
-                widget->AddScratcher(self->mPriceRuler = std::make_shared<PriceRuler>(self->mDataProvider->PricePoint()));
-                widget->AddScratcher(self->mPriceIndicator = std::make_shared<PriceIndicator>(self->mDataProvider));
-                widget->AddQuoteScratcher(self->mQuoteGraph = std::make_shared<QuoteScratcher>(self->mDataProvider, self->m_trade_group_time));
+                        widget->AddScratcher(self->mPriceRuler = std::make_shared<PriceRuler>(dataProvider->PricePoint()));
+                        widget->AddScratcher(self->mPriceIndicator = std::make_shared<PriceIndicator>(dataProvider));
+                        widget->AddQuoteScratcher(self->mQuoteGraph = std::make_shared<QuoteScratcher>(dataProvider, self->m_trade_group_time));
 
-                widget->update();
+                        widget->update();
+                    }
+                }
             }
         }
     });
-    res->mDataProvider->AddNewTradeHandler([ref]() {
+    res->mDataController->AddNewTradeHandler([ref](const std::string& symbol, SourceType source) {
         if (auto self = ref.lock()) {
             self->OnMarketDataUpdate();
         }
@@ -95,14 +100,15 @@ void MarketViewController::OnDataViewChange(uint64_t view_start, uint64_t view_e
     if (auto w = mWidget.lock()) {
         std::clog << "OnDataViewChange(" << w->GetDataViewRect().x_start() << ", " << w->GetDataViewRect().x_end() << ")" << std::endl;
 
-
-        if (!mDataProvider->PublicTradeCache().empty()) {
-            view_end = duration_cast<milliseconds>(mDataProvider->PublicTradeCache().front().trade_time.time_since_epoch()).count();
-        }
-
-        if (view_start < view_end) {
-
-        }
+        // auto dataProvider = mDataController->GetDataProvider(m_symbol);
+        //
+        // if (!dataProvider->PublicTradeCache().empty()) {
+        //     view_end = duration_cast<milliseconds>(dataProvider->PublicTradeCache().front().trade_time.time_since_epoch()).count();
+        // }
+        //
+        // if (view_start < view_end) {
+        //
+        // }
     }
 }
 

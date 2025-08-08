@@ -93,6 +93,9 @@ public:
     explicit currency(std::string_view str) : currency(0, parse_presision_decimals(str))
     { parse(str); }
 
+    explicit currency(std::string_view str, size_t decimals) : currency(0, decimals)
+    { parse(str); }
+
     currency(const currency& c) = default;
     //currency(currency&& c) noexcept = default;
 

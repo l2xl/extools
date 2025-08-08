@@ -23,7 +23,7 @@
 #include <optional>
 #include <tbb/concurrent_vector.h>
 
-#include "core_common.hpp"
+#include "data_rectangle.hpp"
 #include "timedef.hpp"
 
 using std::chrono::duration_cast;

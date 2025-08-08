@@ -55,53 +55,81 @@ CPMAddPackage(
         "TBB_EXAMPLES OFF"
 )
 
+# Add SQLiteCpp with bundled SQLite sources
+CPMAddPackage(
+    NAME SQLiteCpp
+    GITHUB_REPOSITORY SRombauts/SQLiteCpp
+    GIT_TAG 3.3.3
+    OPTIONS
+        "SQLITECPP_INTERNAL_SQLITE ON"
+        "SQLITE_ENABLE_COLUMN_METADATA ON"
+        "SQLITE_ENABLE_JSON1 ON"
+        "SQLITE_ENABLE_ASSERT_HANDLER ON"
+        "SQLITECPP_BUILD_EXAMPLES OFF"
+        "SQLITECPP_BUILD_TESTS OFF"
+)
+
+# Add Glaze for fast JSON serialization
+CPMAddPackage(
+    NAME glaze
+    GITHUB_REPOSITORY stephenberry/glaze
+    GIT_TAG v5.5.4
+    OPTIONS
+        "glaze_DEVELOPER_MODE OFF"
+)
 
 set(PROJECT_SOURCES
         src/main.cpp
         src/config.hpp
         src/config.cpp
-        src/app/trade_cockpit.cpp
-        src/app/trade_cockpit.h
-        src/app/trade_cockpit.ui
-        src/app/view_controller.hpp
-        src/widget/scratch_widget.cpp
-        src/widget/scratch_widget.h
-        src/widget/content_frame.h
-        src/widget/content_frame.cpp
-        src/data/bybit.cpp
-        src/data/bybit.hpp
-        src/data/scheduler.cpp
-        src/data/scheduler.hpp
-        src/data/data_provider.cpp
-        src/data/data_provider.hpp
         src/common/currency.hpp
         src/common/timedef.hpp
+        src/common/data_rectangle.hpp
+        src/core/scheduler.cpp
+        src/core/scheduler.hpp
+        src/data/db_storage.cpp
+        src/data/db_storage.hpp
+        src/data/buoy_candle.cpp
+        src/data/buoy_candle.hpp
+        src/data/bybit.cpp
+        src/data/bybit.hpp
+        src/data/data_provider.cpp
+        src/data/data_provider.hpp
+        src/data/entities/common.hpp
+        src/data/entities/common.cpp
+        src/data/entities/instrument.hpp
+        src/data/entities/trade.hpp
         src/data/bybit/stream.cpp
         src/data/bybit/stream.hpp
         src/data/bybit/data_manager.cpp
         src/data/bybit/data_manager.hpp
         src/data/bybit/error.hpp
-        src/app/market_controller.cpp
-        src/app/market_controller.hpp
         src/data/bybit/subscription.hpp
+        src/widget/scratch_widget.cpp
+        src/widget/scratch_widget.h
+        src/widget/content_frame.h
+        src/widget/content_frame.cpp
         src/widget/scratcher.hpp
         src/widget/quote_scratcher.cpp
         src/widget/quote_scratcher.hpp
-        src/core/buoy_candle.cpp
-        src/core/buoy_candle.hpp
-        src/core/core_common.hpp
+        src/app/trade_cockpit.cpp
+        src/app/trade_cockpit.h
+        src/app/trade_cockpit.ui
+        src/app/view_controller.hpp
+        src/app/market_controller.cpp
+        src/app/market_controller.hpp
 )
 
 qt_add_executable(exscratcher MANUAL_FINALIZATION ${PROJECT_SOURCES})
 
 include_directories(
-        .
         contrib
         src
         src/common
         src/core
         src/app
         src/data
+        src/data/entities
         src/widget
 )
 
@@ -109,6 +137,8 @@ target_link_libraries(exscratcher PRIVATE Qt6::Widgets Qt6::Svg)
 target_link_libraries(exscratcher PRIVATE ${Boost_LIBRARIES})
 target_link_libraries(exscratcher PRIVATE OpenSSL::SSL)
 target_link_libraries(exscratcher PRIVATE TBB::tbb)
+target_link_libraries(exscratcher PRIVATE SQLiteCpp)
+target_link_libraries(exscratcher PRIVATE glaze::glaze)
 
 include(GNUInstallDirs)
 install(TARGETS exscratcher
@@ -129,6 +159,8 @@ if(NOT ANDROID)
         add_executable(${TEST_NAME} ${TEST_FILE})
         target_link_libraries(${TEST_NAME} PRIVATE Catch2::Catch2WithMain)
         target_link_libraries(${TEST_NAME} PRIVATE TBB::tbb)
+        target_link_libraries(${TEST_NAME} PRIVATE glaze::glaze)
+        #target_link_libraries(${TEST_NAME} PRIVATE SQLiteCpp)
     endfunction()
 
     # Add each test file as a separate executable
