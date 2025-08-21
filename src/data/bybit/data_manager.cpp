@@ -64,7 +64,7 @@ std::shared_ptr<IDataProvider> ByBitDataManager::GetDataProvider(const std::stri
 }
 
 
-void ByBitDataManager::HandlePublicTradeSnapshot(const PaginatedResult<PublicTrade> &data)
+void ByBitDataManager::HandlePublicTradeSnapshot(const ListResult<PublicTrade> &data)
 {
     // if (data["category"] != "spot") throw WrongServerData("Wrong InstrumentsInfo category: " + data["category"].get<std::string>());
     // if (!data["list"].is_array())  throw WrongServerData("No or wrong InstrumentsInfo list");

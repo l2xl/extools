@@ -78,10 +78,7 @@ CPMAddPackage(
         "glaze_DEVELOPER_MODE OFF"
 )
 
-set(PROJECT_SOURCES
-        src/main.cpp
-        src/config.hpp
-        src/config.cpp
+set(core_SOURCES
         src/common/currency.hpp
         src/common/timedef.hpp
         src/common/data_rectangle.hpp
@@ -105,6 +102,18 @@ set(PROJECT_SOURCES
         src/data/bybit/data_manager.hpp
         src/data/bybit/error.hpp
         src/data/bybit/subscription.hpp
+        src/dao/dao.hpp
+        src/dao/dao_impl.hpp
+        src/dao/query_builder.hpp
+        src/dao/query_builder.cpp
+)
+
+add_library(core STATIC ${core_SOURCES})
+
+set(PROJECT_SOURCES
+        src/main.cpp
+        src/config.hpp
+        src/config.cpp
         src/widget/scratch_widget.cpp
         src/widget/scratch_widget.h
         src/widget/content_frame.h
@@ -130,15 +139,18 @@ include_directories(
         src/app
         src/data
         src/data/entities
+        src/dao
         src/widget
 )
 
-target_link_libraries(exscratcher PRIVATE Qt6::Widgets Qt6::Svg)
-target_link_libraries(exscratcher PRIVATE ${Boost_LIBRARIES})
-target_link_libraries(exscratcher PRIVATE OpenSSL::SSL)
-target_link_libraries(exscratcher PRIVATE TBB::tbb)
-target_link_libraries(exscratcher PRIVATE SQLiteCpp)
-target_link_libraries(exscratcher PRIVATE glaze::glaze)
+target_link_libraries(core PRIVATE Qt6::Widgets Qt6::Svg)
+target_link_libraries(core PRIVATE ${Boost_LIBRARIES})
+target_link_libraries(core PRIVATE OpenSSL::SSL)
+target_link_libraries(core PRIVATE TBB::tbb)
+target_link_libraries(core PRIVATE SQLiteCpp)
+target_link_libraries(core PRIVATE glaze::glaze)
+
+target_link_libraries(exscratcher PRIVATE core)
 
 include(GNUInstallDirs)
 install(TARGETS exscratcher
@@ -157,15 +169,19 @@ if(NOT ANDROID)
     # Function to create test executable for each test file
     function(add_test TEST_NAME TEST_FILE)
         add_executable(${TEST_NAME} ${TEST_FILE})
+        target_link_libraries(${TEST_NAME} PRIVATE core)
         target_link_libraries(${TEST_NAME} PRIVATE Catch2::Catch2WithMain)
+        target_link_libraries(${TEST_NAME} PRIVATE ${Boost_LIBRARIES})
+        target_link_libraries(${TEST_NAME} PRIVATE OpenSSL::SSL)
         target_link_libraries(${TEST_NAME} PRIVATE TBB::tbb)
         target_link_libraries(${TEST_NAME} PRIVATE glaze::glaze)
-        #target_link_libraries(${TEST_NAME} PRIVATE SQLiteCpp)
+        target_link_libraries(${TEST_NAME} PRIVATE SQLiteCpp)
     endfunction()
 
     # Add each test file as a separate executable
     add_test(test_currency test/common/test_currency.cpp)
     add_test(test_buoy_candle test/core/test_buoy_candle.cpp)
+    add_test(test_dao test/dao/test_dao.cpp)
 
 endif()
 

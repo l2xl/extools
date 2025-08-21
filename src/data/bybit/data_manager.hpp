@@ -139,7 +139,7 @@ public:
         }
     }
 
-    void HandlePublicTradeSnapshot(const PaginatedResult<PublicTrade>& data);
+    void HandlePublicTradeSnapshot(const ListResult<PublicTrade>& data);
 
     void HandleSubscriptionData(const SubscriptionTopic& topic, const std::string& type, const glz::json_t& data);
     void HandleError(boost::system::error_code ec);
