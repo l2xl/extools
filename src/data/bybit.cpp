@@ -151,35 +151,35 @@ void ByBitApi::Resolve()
 awaitable<void> ByBitApi::DoPing(std::shared_ptr<ByBitApi> self)
 {
     std::clog << "Trying to connect: " << REQ_TIME << std::endl;
-    co_await coRequestServer<TimeResponse>(move(self), REQ_TIME);
+    co_await coRequestServer<ApiResponse<TimeResult>>(move(self), REQ_TIME);
 }
 
-awaitable<InstrumentResponse> ByBitApi::coGetInstrumentInfo(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription)
+awaitable<ApiResponse<ListResult<InstrumentInfo>>> ByBitApi::coGetInstrumentInfo(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription)
 {
     std::clog << "Creating All Spot Instruments request..." << std::endl;
     std::ostringstream buf;
     buf << REQ_INSTRUMENT << "?category=spot&symbol=" << subscription->symbol;
     std::clog << "Requesting instrument..." << std::endl;
-    co_return co_await coRequestServer<InstrumentResponse>(move(self), buf.str());
+    co_return co_await coRequestServer<ApiResponse<ListResult<InstrumentInfo>>>(move(self), buf.str());
 }
 
-awaitable<PublicTradeResponse> ByBitApi::coGetPublicTradeHistory(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription)
+awaitable<ApiResponse<ListResult<PublicTrade>>> ByBitApi::coGetPublicTradeHistory(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription)
 {
     std::clog << "Creating Recent Trades request..." << std::endl;
     std::ostringstream buf;
     buf << REQ_PUBLIC_TRADES << "?category=spot&symbol=" << subscription->symbol;
     std::clog << "Requesting Recent Trades..." << std::endl;
-    co_return co_await coRequestServer<PublicTradeResponse>(move(self), buf.str());
+    co_return co_await coRequestServer<ApiResponse<ListResult<PublicTrade>>>(move(self), buf.str());
 }
 
-awaitable<InstrumentResponse> ByBitApi::coGetInstruments(std::shared_ptr<ByBitApi> self)
+awaitable<ApiResponse<ListResult<InstrumentInfo>>> ByBitApi::coGetInstruments(std::shared_ptr<ByBitApi> self)
 {
     std::clog << "Creating All Spot Instruments request..." << std::endl;
     std::ostringstream buf;
     buf << REQ_INSTRUMENT << "?category=spot";
     std::clog << "Requesting all instruments..." << std::endl;
     
-    co_return co_await coRequestServer<InstrumentResponse>(self, buf.str());
+    co_return co_await coRequestServer<ApiResponse<ListResult<InstrumentInfo>>>(self, buf.str());
 }
 
 
@@ -372,7 +372,7 @@ void ByBitApi::Unsubscribe(const std::string& symbol)
 void ByBitApi::FetchCommonData(std::shared_ptr<ByBitDataManager> dataManager)
 {
     co_spawn(mScheduler->io(), coGetInstruments(shared_from_this()),
-        [dataManager](std::exception_ptr e, InstrumentResponse response) {
+        [dataManager](std::exception_ptr e, ApiResponse<ListResult<InstrumentInfo>> response) {
             if (e) {
                 try {
                     std::rethrow_exception(e);
@@ -393,7 +393,7 @@ void ByBitApi::FetchCommonData(std::shared_ptr<ByBitDataManager> dataManager)
 void ByBitApi::RequestRecentPublicTrades(std::shared_ptr<ByBitSubscription> subscription)
 {
     co_spawn(mScheduler->io(), coGetPublicTradeHistory(shared_from_this(), subscription),
-        [self = shared_from_this(), subscription](std::exception_ptr e, PublicTradeResponse resp) {
+        [self = shared_from_this(), subscription](std::exception_ptr e, ApiResponse<ListResult<PublicTrade>> resp) {
             if (e) {
                 std::cerr << "Request public trades error!!!" << std::endl;
                 return;

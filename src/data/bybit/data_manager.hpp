@@ -30,8 +30,9 @@
 
 #include "data_provider.hpp"
 #include "currency.hpp"
+#include "bybit/entities/response.hpp"
 #include "bybit/entities/instrument.hpp"
-#include "bybit/entities/entities.hpp"
+#include "bybit/entities/public_trade.hpp"
 
 
 namespace scratcher {

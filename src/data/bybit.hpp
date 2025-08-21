@@ -23,7 +23,12 @@
 #include "data_provider.hpp"
 #include "currency.hpp"
 #include "bybit/error.hpp"
-#include "bybit/entities/entities.hpp"
+#include "bybit/entities/response.hpp"
+#include "bybit/entities/instrument.hpp"
+#include "bybit/entities/public_trade.hpp"
+#include "bybit/entities/fee_rate.hpp"
+#include "bybit/entities/order.hpp"
+#include "bybit/entities/trade.hpp"
 
 class Config;
 
@@ -169,9 +174,9 @@ private:
 
     static boost::asio::awaitable<void> DoPing(std::shared_ptr<ByBitApi> self);
 
-    static boost::asio::awaitable<InstrumentResponse> coGetInstrumentInfo(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription);
-    static boost::asio::awaitable<PublicTradeResponse> coGetPublicTradeHistory(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription);
-    static boost::asio::awaitable<InstrumentResponse> coGetInstruments(std::shared_ptr<ByBitApi> self);
+    static boost::asio::awaitable<ApiResponse<ListResult<InstrumentInfo>>> coGetInstrumentInfo(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription);
+    static boost::asio::awaitable<ApiResponse<ListResult<PublicTrade>>> coGetPublicTradeHistory(std::shared_ptr<ByBitApi> self, std::shared_ptr<ByBitSubscription> subscription);
+    static boost::asio::awaitable<ApiResponse<ListResult<InstrumentInfo>>> coGetInstruments(std::shared_ptr<ByBitApi> self);
 
     void SubscribePublicStream(const std::shared_ptr<ByBitSubscription>& subscription);
 

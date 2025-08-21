@@ -1,12 +1,21 @@
 // Scratcher project
 // Copyright (c) 2025 l2xl (l2xl/at/proton.me)
-// Distributed under the MIT software license, see the accompanying
-// file LICENSE or https://opensource.org/license/mit
+// Distributed under the Intellectual Property Reserve License (IPRL)
+// -----BEGIN PGP PUBLIC KEY BLOCK-----
+//
+// mDMEYdxcVRYJKwYBBAHaRw8BAQdAfacBVThCP5QDPEgSbSIudtpJS4Y4Imm5dzaN
+// lM1HTem0IkwyIFhsIChsMnhsKSA8bDJ4bEBwcm90b21tYWlsLmNvbT6IkAQTFggA
+// OBYhBKRCfUyWnduCkisNl+WRcOaCK79JBQJh3FxVAhsDBQsJCAcCBhUKCQgLAgQW
+// AgMBAh4BAheAAAoJEOWRcOaCK79JDl8A/0/AjYVbAURZJXP3tHRgZyYyN9txT6mW
+// 0bYCcOf0rZ4NAQDoFX4dytPDvcjV7ovSQJ6dzvIoaRbKWGbHRCufrm5QBA==
+// =KKu7
+// -----END PGP PUBLIC KEY BLOCK-----
 
 #ifndef BYBIT_INSTRUMENT_HPP
 #define BYBIT_INSTRUMENT_HPP
 
 #include <string>
+#include "enums.hpp"
 
 namespace scratcher::bybit {
 
@@ -39,7 +48,7 @@ struct InstrumentInfo {
     std::string baseCoin;               // Base coin
     std::string quoteCoin;              // Quote coin
     std::string innovation;             // Innovation zone token ("0" or "1")
-    std::string status;                 // Instrument status ("Trading", etc.)
+    InstrumentStatus status;            // Instrument status
     std::string marginTrading;          // Margin trading support ("utaOnly", etc.)
     std::string stTag;                  // Special treatment label ("0" or "1")
     PriceFilter priceFilter;            // Price filter

@@ -20,14 +20,14 @@
 
 **Key Components**:
 - **IDao<Entity>**: Generic interface for CRUD operations
-- **GenericDao<Entity>**: Template-based DAO implementation using C++23 reflection via Glaze metadata
-- **EntityMetadata**: Automatic schema introspection from entity structure
+- **GenericDao<Entity>**: Template-based DAO implementation using C++23 reflection
+- **EntityMetadata**: Automatic schema introspection from entity structure using C++23 reflection
 - **QueryBuilder & QueryCondition**: Type-safe query construction
 - **Transaction**: RAII-based transaction management with automatic rollback
 - **DaoFactory**: DAO registry and factory with caching
 
 **Design Principles**:
-- **Zero Configuration**: Automatic table creation and schema generation from existing Glaze metadata
+- **Zero Configuration**: Automatic table creation and schema generation using C++23 reflection
 - **Type Safety**: Compile-time type checking for all database operations
 - **RAII Compliance**: Automatic resource management for transactions and connections
 - **Generic & Extensible**: Works with any entity type through template specialization
@@ -43,7 +43,7 @@ src/data/dao/
 ├── generic_dao.cpp
 ├── transaction.hpp           # RAII transaction management
 ├── transaction.cpp
-├── entity_metadata.hpp       # Entity introspection using Glaze
+├── entity_metadata.hpp       # Entity introspection using C++23 reflection
 ├── entity_metadata.cpp
 ├── query_builder.hpp         # Query building utilities
 ├── query_builder.cpp
@@ -51,7 +51,7 @@ src/data/dao/
 └── dao_factory.cpp
 ```
 
-**Integration**: Extends existing DbStorage class without breaking changes, leveraging existing SQLiteCpp and Glaze dependencies.
+**Integration**: Extends existing DbStorage class without breaking changes, leveraging existing SQLiteCpp dependency.
 
 **Thread Safety Model**:
 - **SQLite**: All database operations serialized through existing DbStorage strand (boost::asio::strand)
@@ -88,7 +88,7 @@ co_await dao_factory.with_transaction([&](auto& tx) -> boost::asio::awaitable<vo
 **Phase 1: Core Infrastructure**
 1. Create `src/data/dao/` directory structure
 2. Implement `dao_interface.hpp` - Core DAO interface template
-3. Implement `entity_metadata.hpp` - C++23 reflection using Glaze metadata
+3. Implement `entity_metadata.hpp` - C++23 reflection for automatic schema generation
 4. Implement `query_builder.hpp` - Type-safe query construction
 
 **Phase 2: DAO Implementation**
@@ -103,13 +103,13 @@ co_await dao_factory.with_transaction([&](auto& tx) -> boost::asio::awaitable<vo
 
 **Phase 4: Testing & Validation**
 11. Create unit tests for DAO components using existing Catch2 framework
-12. Test with existing ByBit entities (KlineData, InstrumentInfo, PublicTrade)
+12. Test with existing ByBit entities (InstrumentInfo, PublicTrade)
 13. Performance testing and optimization
 
 **Implementation Notes**:
 - Each phase should be implemented and tested independently
 - Maintain backward compatibility with existing DbStorage usage
-- Leverage existing Glaze metadata from ByBit entities
+- Use C++23 reflection to automatically introspect ByBit entity structures
 - Follow project's layered architecture constraints
 - All DAO operations must be async and execute on DbStorage strand for SQLite thread safety
 - Transaction objects must be bound to the database strand to prevent concurrent access
