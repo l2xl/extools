@@ -16,21 +16,12 @@
 
 namespace scratcher::dao {
 
-// QueryBuilder implementation
-std::string QueryBuilder::select_all(const std::string& table_name) {
-    return "SELECT * FROM " + table_name;
-}
-
 std::string QueryBuilder::select_where(const std::string& table_name, const std::string& where_clause) {
-    return "SELECT * FROM " + table_name + " WHERE " + where_clause;
-}
-
-std::string QueryBuilder::select_count(const std::string& table_name) {
-    return "SELECT COUNT(*) FROM " + table_name;
+    return where_clause.empty() ? ("SELECT * FROM " + table_name) : ("SELECT * FROM " + table_name + " WHERE " + where_clause);
 }
 
 std::string QueryBuilder::select_count_where(const std::string& table_name, const std::string& where_clause) {
-    return "SELECT COUNT(*) FROM " + table_name + " WHERE " + where_clause;
+    return where_clause.empty() ? "SELECT COUNT(*) FROM " + table_name : "SELECT COUNT(*) FROM " + table_name + " WHERE " + where_clause;
 }
 
 std::string QueryBuilder::insert(const std::string& table_name, const std::vector<std::string>& columns) {
@@ -38,17 +29,17 @@ std::string QueryBuilder::insert(const std::string& table_name, const std::vecto
            generate_placeholders(columns.size()) + ")";
 }
 
-std::string QueryBuilder::insert_batch(const std::string& table_name, const std::vector<std::string>& columns, size_t batch_size) {
-    std::ostringstream sql;
-    sql << "INSERT INTO " << table_name << " (" << join_columns(columns) << ") VALUES ";
-    
-    for (size_t i = 0; i < batch_size; ++i) {
-        if (i > 0) sql << ", ";
-        sql << "(" << generate_placeholders(columns.size()) << ")";
-    }
-    
-    return sql.str();
-}
+// std::string QueryBuilder::insert_batch(const std::string& table_name, const std::vector<std::string>& columns, size_t batch_size) {
+//     std::ostringstream sql;
+//     sql << "INSERT INTO " << table_name << " (" << join_columns(columns) << ") VALUES ";
+//
+//     for (size_t i = 0; i < batch_size; ++i) {
+//         if (i > 0) sql << ", ";
+//         sql << "(" << generate_placeholders(columns.size()) << ")";
+//     }
+//
+//     return sql.str();
+// }
 
 std::string QueryBuilder::update_where(const std::string& table_name, const std::vector<std::string>& columns, const std::string& where_clause) {
     std::ostringstream sql;
@@ -62,8 +53,6 @@ std::string QueryBuilder::update_where(const std::string& table_name, const std:
     sql << " WHERE " << where_clause;
     return sql.str();
 }
-
-
 
 std::string QueryBuilder::delete_where(const std::string& table_name, const std::string& where_clause) {
     return "DELETE FROM " + table_name + " WHERE " + where_clause;

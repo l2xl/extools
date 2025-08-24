@@ -11,8 +11,8 @@
 // =KKu7
 // -----END PGP PUBLIC KEY BLOCK-----
 
-#ifndef QUERY_BUILDER_HPP
-#define QUERY_BUILDER_HPP
+#ifndef  SCRATCHER_QUERY_BUILDER_HPP
+#define  SCRATCHER_QUERY_BUILDER_HPP
 
 #include <string>
 #include <vector>
@@ -46,82 +46,86 @@ enum class QueryOperator {
 /**
  * Type-safe query condition builder
  */
-template<typename Entity>
 class QueryCondition {
-private:
     std::string m_sql;
-    std::vector<QueryValue> m_parameters;
+    size_t m_parameter_count;
 
 public:
-    QueryCondition() = default;
+    QueryCondition() : m_parameter_count(0) {}
     
     // Static factory methods for creating conditions
-    static QueryCondition<Entity> where(const std::string& field, QueryOperator op, const QueryValue& value) {
+    static QueryCondition where(const std::string& field, QueryOperator op) {
         std::string sql = field + " " + operator_to_sql(op) + " ?";
-        std::vector<QueryValue> params = {value};
-        return QueryCondition<Entity>(std::move(sql), std::move(params));
+        return QueryCondition(std::move(sql), 1);
     }
     
-    static QueryCondition<Entity> where_null(const std::string& field) {
+    // Variadic template factory method for creating conditions with immediate values
+    template<typename... Args>
+    static QueryCondition where(const std::string& field, QueryOperator op, Args&&... args) {
+        static_assert(sizeof...(args) == 1, "Single parameter condition requires exactly one argument");
+        std::string sql = field + " " + operator_to_sql(op) + " ?";
+        return QueryCondition(std::move(sql), 1);
+    }
+    
+    static QueryCondition where_null(const std::string& field) {
         std::string sql = field + " IS NULL";
-        return QueryCondition<Entity>(std::move(sql), {});
+        return QueryCondition(std::move(sql), 0);
     }
     
-    static QueryCondition<Entity> where_not_null(const std::string& field) {
+    static QueryCondition where_not_null(const std::string& field) {
         std::string sql = field + " IS NOT NULL";
-        return QueryCondition<Entity>(std::move(sql), {});
+        return QueryCondition(std::move(sql), 0);
     }
     
-    static QueryCondition<Entity> where_in(const std::string& field, const std::vector<QueryValue>& values) {
-        if (values.empty()) {
-            return QueryCondition<Entity>("1=0", {});
-        }
+    // Variadic template version for IN conditions
+    template<typename... Args>
+    static QueryCondition where_in(const std::string& field, Args&&... args) {
+        static_assert(sizeof...(args) > 0, "IN condition requires at least one argument");
         
         std::string sql = field + " IN (";
-        for (size_t i = 0; i < values.size(); ++i) {
+        constexpr size_t arg_count = sizeof...(args);
+        for (size_t i = 0; i < arg_count; ++i) {
             if (i > 0) sql += ", ";
             sql += "?";
         }
         sql += ")";
         
-        return QueryCondition<Entity>(std::move(sql), values);
+        return QueryCondition(std::move(sql), arg_count);
     }
     
-    static QueryCondition<Entity> where_between(const std::string& field, const QueryValue& min, const QueryValue& max) {
+    static QueryCondition where_between(const std::string& field) {
         std::string sql = field + " BETWEEN ? AND ?";
-        std::vector<QueryValue> params = {min, max};
-        return QueryCondition<Entity>(std::move(sql), std::move(params));
+        return QueryCondition(std::move(sql), 2);
     }
     
     // Logical operators
-    QueryCondition<Entity> and_(const QueryCondition<Entity>& other) const {
+    QueryCondition and_(const QueryCondition& other) const {
         return combine(other, true);
     }
     
-    QueryCondition<Entity> or_(const QueryCondition<Entity>& other) const {
+    QueryCondition or_(const QueryCondition& other) const {
         return combine(other, false);
     }
     
     // Getters
     const std::string& sql() const { return m_sql; }
-    const std::vector<QueryValue>& parameters() const { return m_parameters; }
+    size_t parameter_count() const { return m_parameter_count; }
     
     // Check if condition is empty
     bool empty() const { return m_sql.empty(); }
 
 private:
-    QueryCondition(std::string sql, std::vector<QueryValue> parameters) 
-        : m_sql(std::move(sql)), m_parameters(std::move(parameters)) {}
+    QueryCondition(std::string sql, size_t parameter_count) 
+        : m_sql(std::move(sql)), m_parameter_count(parameter_count) {}
     
-    QueryCondition<Entity> combine(const QueryCondition<Entity>& other, bool is_and) const {
+    QueryCondition combine(const QueryCondition& other, bool is_and) const {
         if (empty()) return other;
         if (other.empty()) return *this;
         
         std::string combined_sql = "(" + m_sql + ")" + (is_and ? " AND " : " OR ") + "(" + other.m_sql + ")";
-        std::vector<QueryValue> combined_params = m_parameters;
-        combined_params.insert(combined_params.end(), other.m_parameters.begin(), other.m_parameters.end());
+        size_t combined_param_count = m_parameter_count + other.m_parameter_count;
         
-        return QueryCondition<Entity>(std::move(combined_sql), std::move(combined_params));
+        return QueryCondition(std::move(combined_sql), combined_param_count);
     }
     
     static std::string operator_to_sql(QueryOperator op) {
@@ -175,4 +179,4 @@ private:
 
 } // namespace scratcher::dao
 
-#endif // QUERY_BUILDER_HPP
+#endif //  SCRATCHER_QUERY_BUILDER_HPP

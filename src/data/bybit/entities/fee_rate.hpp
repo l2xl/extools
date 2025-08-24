@@ -21,7 +21,7 @@ namespace scratcher::bybit {
 
 // Fee rate information from ByBit Account/GetFeeRate API
 struct FeeRate {
-    std::optional<std::string> symbol;  // Symbol name (e.g., "BTCUSDT", empty for options)
+    std::string symbol;  // Symbol name (e.g., "BTCUSDT", empty for options)
     std::optional<std::string> baseCoin; // Base coin (e.g., "BTC", "ETH", empty for spot)
     std::string takerFeeRate;           // Taker fee rate (e.g., "0.0006")
     std::string makerFeeRate;           // Maker fee rate (e.g., "0.0001")

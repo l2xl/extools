@@ -17,7 +17,6 @@
 #include <memory>
 #include <iostream>
 #include <SQLiteCpp/SQLiteCpp.h>
-#include <boost/asio.hpp>
 
 #include "dao.hpp"
 #include "data/bybit/entities/fee_rate.hpp"
@@ -29,73 +28,33 @@ using namespace scratcher::bybit;
 class TestDatabase {
 public:
     TestDatabase() 
-        : io_context()
-        , strand(boost::asio::make_strand(io_context))
-        , db(std::make_shared<SQLite::Database>(":memory:", SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE))
+        : db(std::make_shared<SQLite::Database>(":memory:", SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE))
     {
     }
 
-    boost::asio::io_context io_context;
-    boost::asio::strand<boost::asio::any_io_executor> strand;
     std::shared_ptr<SQLite::Database> db;
-
-    // Helper to run coroutines synchronously for testing
-    template<typename T>
-    T sync_await(boost::asio::awaitable<T> aw) {
-        std::optional<T> result;
-        boost::asio::co_spawn(io_context, 
-            [&]() -> boost::asio::awaitable<void> {
-                result = co_await std::move(aw);
-            },
-            boost::asio::detached);
-        
-        io_context.run();
-        io_context.restart();
-        return std::move(*result);
-    }
-
-    // Helper for void coroutines
-    void sync_await_void(boost::asio::awaitable<void> aw) {
-        bool completed = false;
-        boost::asio::co_spawn(io_context, 
-            [&]() -> boost::asio::awaitable<void> {
-                co_await std::move(aw);
-                completed = true;
-            },
-            boost::asio::detached);
-        
-        io_context.run();
-        io_context.restart();
-        REQUIRE(completed);
-    }
 };
 
 TEST_CASE("Dao<FeeRate> - Create and verify empty database", "[dao][fee_rate]") {
     TestDatabase test_db;
     
-    // Create DAO with symbol as primary key
-    Dao<FeeRate> dao(test_db.db, test_db.strand, "symbol");
-    
-    // Ensure table exists
-    test_db.sync_await_void(dao.ensureTableExists());
+    // Create DAO with symbol as primary key - table created automatically in constructor
+    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
     
     // Query empty database - should return no records
-    auto all_records = test_db.sync_await(dao.queryAll());
+    auto all_records = dao->query();
     CHECK(all_records.empty());
     
     // Count should be 0
-    auto count = test_db.sync_await(dao.count());
+    auto count = dao->count();
     CHECK(count == 0);
 }
 
 TEST_CASE("Dao<FeeRate> - Insert and query record from ByBit JSON", "[dao][fee_rate]") {
     TestDatabase test_db;
     
-    // Create DAO with symbol as primary key
-    Dao<FeeRate> dao(test_db.db, test_db.strand, "symbol");
-    
-    // Ensure table exists
-    test_db.sync_await_void(dao.ensureTableExists());
+    // Create DAO with symbol as primary key - table created automatically in constructor
+    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
     
     // ByBit API example JSON from documentation
     std::string bybit_json = R"({
@@ -111,26 +70,24 @@ TEST_CASE("Dao<FeeRate> - Insert and query record from ByBit JSON", "[dao][fee_r
     FeeRate fee_rate = parse_result.value();
     
     // Verify parsed data
-    REQUIRE(fee_rate.symbol.has_value());
-    CHECK(fee_rate.symbol.value() == "ETHUSDT");
+    CHECK(fee_rate.symbol == "ETHUSDT");
     CHECK(fee_rate.takerFeeRate == "0.0006");
     CHECK(fee_rate.makerFeeRate == "0.0001");
     CHECK_FALSE(fee_rate.baseCoin.has_value()); // Should be empty in this example
     
-    // Insert the record
-    test_db.sync_await_void(dao.insert(fee_rate));
+    // Insert the record - synchronous operation
+    dao->insert(fee_rate);
     
     // Verify insertion - count should be 1
-    auto count = test_db.sync_await(dao.count());
+    auto count = dao->count();
     CHECK(count == 1);
     
     // Query all records
-    auto all_records = test_db.sync_await(dao.queryAll());
+    auto all_records = dao->query();
     REQUIRE(all_records.size() == 1);
     
     const auto& retrieved_record = all_records[0];
-    REQUIRE(retrieved_record.symbol.has_value());
-    CHECK(retrieved_record.symbol.value() == "ETHUSDT");
+    CHECK(retrieved_record.symbol == "ETHUSDT");
     CHECK(retrieved_record.takerFeeRate == "0.0006");
     CHECK(retrieved_record.makerFeeRate == "0.0001");
     CHECK_FALSE(retrieved_record.baseCoin.has_value());
@@ -139,11 +96,8 @@ TEST_CASE("Dao<FeeRate> - Insert and query record from ByBit JSON", "[dao][fee_r
 TEST_CASE("Dao<FeeRate> - Query using every method", "[dao][fee_rate]") {
     TestDatabase test_db;
     
-    // Create DAO with symbol as primary key
-    Dao<FeeRate> dao(test_db.db, test_db.strand, "symbol");
-    
-    // Ensure table exists
-    test_db.sync_await_void(dao.ensureTableExists());
+    // Create DAO with symbol as primary key - table created automatically in constructor
+    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
     
     // Create test data - multiple fee rates
     std::vector<FeeRate> test_data = {
@@ -167,53 +121,51 @@ TEST_CASE("Dao<FeeRate> - Query using every method", "[dao][fee_rate]") {
         }
     };
     
-    // Insert all test data
+    // Insert all test data - synchronous operations
     for (const auto& fee_rate : test_data) {
-        test_db.sync_await_void(dao.insert(fee_rate));
+        dao->insert(fee_rate);
     }
     
-    SECTION("query_all() - Returns all records") {
-        auto all_records = test_db.sync_await(dao.queryAll());
+    SECTION("queryAll() - Returns all records") {
+        auto all_records = dao->query();
         CHECK(all_records.size() == 3);
     }
     
     SECTION("query() - Find specific record by symbol") {
-        auto eth_condition = QueryCondition<FeeRate>::where("symbol", QueryOperator::Equal, "ETHUSDT");
-        auto eth_records = test_db.sync_await(dao.query(eth_condition));
+        auto eth_condition = QueryCondition::where("symbol", QueryOperator::Equal);
+        auto eth_records = dao->query(eth_condition, "ETHUSDT");
         REQUIRE(eth_records.size() == 1);
         const auto& eth_record = eth_records[0];
-        REQUIRE(eth_record.symbol.has_value());
-        CHECK(eth_record.symbol.value() == "ETHUSDT");
+        CHECK(eth_record.symbol == "ETHUSDT");
         CHECK(eth_record.takerFeeRate == "0.0006");
 
-        auto btc_condition = QueryCondition<FeeRate>::where("symbol", QueryOperator::Equal, "BTCUSDT");
-        auto btc_records = test_db.sync_await(dao.query(btc_condition));
+        auto btc_condition = QueryCondition::where("symbol", QueryOperator::Equal);
+        auto btc_records = dao->query(btc_condition, "BTCUSDT");
         REQUIRE(btc_records.size() == 1);
         const auto& btc_record = btc_records[0];
-        REQUIRE(btc_record.symbol.has_value());
-        CHECK(btc_record.symbol.value() == "BTCUSDT");
+        CHECK(btc_record.symbol == "BTCUSDT");
         CHECK(btc_record.takerFeeRate == "0.0008");
     }
 
-    SECTION("count_where() - Check record existence") {
-        auto eth_condition = QueryCondition<FeeRate>::where("symbol", QueryOperator::Equal, "ETHUSDT");
-        auto eth_count = test_db.sync_await(dao.count(eth_condition));
+    SECTION("count() with condition - Check record existence") {
+        auto eth_condition = QueryCondition::where("symbol", QueryOperator::Equal);
+        auto eth_count = dao->count(eth_condition, "ETHUSDT");
         CHECK(eth_count == 1);
 
-        auto nonexistent_condition = QueryCondition<FeeRate>::where("symbol", QueryOperator::Equal, "NONEXISTENT");
-        auto nonexistent_count = test_db.sync_await(dao.count(nonexistent_condition));
+        auto nonexistent_condition = QueryCondition::where("symbol", QueryOperator::Equal);
+        auto nonexistent_count = dao->count(nonexistent_condition, "NONEXISTENT");
         CHECK(nonexistent_count == 0);
     }
 
     SECTION("count() - Total count") {
-        auto total_count = test_db.sync_await(dao.count());
+        auto total_count = dao->count();
         CHECK(total_count == 3);
     }
     
     SECTION("update() - Update existing record") {
         // Get ETHUSDT record
-        auto eth_condition = QueryCondition<FeeRate>::where("symbol", QueryOperator::Equal, "ETHUSDT");
-        auto eth_records = test_db.sync_await(dao.query(eth_condition));
+        auto eth_condition = QueryCondition::where("symbol", QueryOperator::Equal);
+        auto eth_records = dao->query(eth_condition, "ETHUSDT");
         REQUIRE(eth_records.size() == 1);
         auto eth_record = eth_records[0];
         
@@ -221,27 +173,27 @@ TEST_CASE("Dao<FeeRate> - Query using every method", "[dao][fee_rate]") {
         eth_record.takerFeeRate = "0.0007";
         eth_record.makerFeeRate = "0.0002";
         
-        // Update record
-        test_db.sync_await_void(dao.update(eth_record));
+        // Update record - synchronous operation (by primary key)
+        dao->update(eth_record);
         
         // Verify update
-        auto updated_records = test_db.sync_await(dao.query(eth_condition));
+        auto updated_records = dao->query(eth_condition, "ETHUSDT");
         REQUIRE(updated_records.size() == 1);
         const auto& updated_record = updated_records[0];
         CHECK(updated_record.takerFeeRate == "0.0007");
         CHECK(updated_record.makerFeeRate == "0.0002");
     }
     
-    SECTION("remove_where() - Delete specific record") {
+    SECTION("remove() - Delete specific record") {
         // Remove SOLUSDT
-        auto sol_condition = QueryCondition<FeeRate>::where("symbol", QueryOperator::Equal, "SOLUSDT");
-        test_db.sync_await_void(dao.remove(sol_condition));
+        auto sol_condition = QueryCondition::where("symbol", QueryOperator::Equal);
+        dao->remove(sol_condition, "SOLUSDT");
 
         // Verify removal
-        auto sol_count = test_db.sync_await(dao.count(sol_condition));
+        auto sol_count = dao->count(sol_condition, "SOLUSDT");
         CHECK(sol_count == 0);
 
-        auto remaining_count = test_db.sync_await(dao.count());
+        auto remaining_count = dao->count();
         CHECK(remaining_count == 2);
     }
 }
@@ -249,12 +201,9 @@ TEST_CASE("Dao<FeeRate> - Query using every method", "[dao][fee_rate]") {
 TEST_CASE("Dao<FeeRate> - ByBit API response with baseCoin", "[dao][fee_rate]") {
     TestDatabase test_db;
     
-    // Create DAO with symbol as primary key
-    Dao<FeeRate> dao(test_db.db, test_db.strand, "symbol");
-    
-    // Ensure table exists
-    test_db.sync_await_void(dao.ensureTableExists());
-    
+    // Create DAO with symbol as primary key - table created automatically in constructor
+    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
+
     // ByBit API example with baseCoin (for futures/derivatives)
     std::string bybit_json_with_base = R"({
         "symbol": "BTCUSDT",
@@ -270,25 +219,220 @@ TEST_CASE("Dao<FeeRate> - ByBit API response with baseCoin", "[dao][fee_rate]") 
     FeeRate fee_rate = parse_result.value();
     
     // Verify parsed data
-    REQUIRE(fee_rate.symbol.has_value());
-    CHECK(fee_rate.symbol.value() == "BTCUSDT");
+    CHECK(fee_rate.symbol == "BTCUSDT");
     REQUIRE(fee_rate.baseCoin.has_value());
     CHECK(fee_rate.baseCoin.value() == "BTC");
     CHECK(fee_rate.takerFeeRate == "0.0008");
     CHECK(fee_rate.makerFeeRate == "0.0002");
     
-    // Insert and verify
-    test_db.sync_await_void(dao.insert(fee_rate));
+    // Insert and verify - synchronous operation
+    dao->insert(fee_rate);
     
-    auto btc_condition = QueryCondition<FeeRate>::where("symbol", QueryOperator::Equal, "BTCUSDT");
-    auto retrieved_records = test_db.sync_await(dao.query(btc_condition));
+    auto btc_condition = QueryCondition::where("symbol", QueryOperator::Equal);
+    auto retrieved_records = dao->query(btc_condition, "BTCUSDT");
     REQUIRE(retrieved_records.size() == 1);
     const auto& retrieved = retrieved_records[0];
     REQUIRE(retrieved.baseCoin.has_value());
     CHECK(retrieved.baseCoin.value() == "BTC");
 }
 
+TEST_CASE("Dao<FeeRate> - Batch insert", "[dao][fee_rate]") {
+    TestDatabase test_db;
+    
+    // Create DAO with symbol as primary key - table created automatically in constructor
+    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
+    
+    // Create test data - multiple fee rates
+    std::vector<FeeRate> test_data = {
+        {
+            std::string{"ETHUSDT"},   // symbol (primary key)
+            std::nullopt,             // baseCoin
+            "0.0006",                 // takerFeeRate
+            "0.0001"                  // makerFeeRate
+        },
+        {
+            std::string{"BTCUSDT"},   // symbol (primary key)
+            std::string{"BTC"},       // baseCoin
+            "0.0008",                 // takerFeeRate
+            "0.0002"                  // makerFeeRate
+        },
+        {
+            std::string{"SOLUSDT"},   // symbol (primary key)
+            std::string{"SOL"},       // baseCoin
+            "0.0010",                 // takerFeeRate
+            "0.0005"                  // makerFeeRate
+        }
+    };
+    
+    // Insert all test data in batch - synchronous operation
+    dao->insert(test_data[0]);
+    dao->insert(test_data[1]);
+    dao->insert(test_data[2]);
 
+    // Verify all records were inserted
+    auto all_records = dao->query();
+    CHECK(all_records.size() == 3);
+    
+    auto total_count = dao->count();
+    CHECK(total_count == 3);
+}
+
+// TEST_CASE("Dao<FeeRate> - Transaction operations", "[dao][fee_rate][transaction]") {
+//     TestDatabase test_db;
+//
+//     // Create DAO with symbol as primary key - table created automatically in constructor
+//     auto dao = Dao<FeeRate>::Create(test_db.db);
+//
+//     // Create test data
+//     std::vector<FeeRate> test_data = {
+//         {
+//             std::string{"ETHUSDT"},   // symbol (primary key)
+//             std::nullopt,             // baseCoin
+//             "0.0006",                 // takerFeeRate
+//             "0.0001"                  // makerFeeRate
+//         },
+//         {
+//             std::string{"BTCUSDT"},   // symbol (primary key)
+//             std::string{"BTC"},       // baseCoin
+//             "0.0008",                 // takerFeeRate
+//             "0.0002"                  // makerFeeRate
+//         }
+//     };
+//
+//     SECTION("Successful transaction") {
+//         // Create transaction and add operations
+//         auto transaction = dao->createTransaction();
+//
+//         // Create operations
+//         Insert<FeeRate> insert_op1(dao);
+//         Insert<FeeRate> insert_op2(dao);
+//
+//         // Add operations to transaction
+//         transaction.add(std::move(insert_op1), test_data[0]);
+//         transaction.add(std::move(insert_op2), test_data[1]);
+//
+//         // Execute transaction
+//         transaction();
+//
+//         // Verify both records were inserted
+//         auto all_records = dao->queryAll();
+//         CHECK(all_records.size() == 2);
+//         CHECK(transaction.is_executed());
+//     }
+//
+//     SECTION("Transaction rollback on error") {
+//         // Insert first record normally
+//         dao->insert(test_data[0]);
+//
+//         // Create transaction that will fail
+//         auto transaction = dao->createTransaction();
+//
+//         // Create operations - second insert will fail due to primary key constraint
+//         Insert<FeeRate> insert_op1(dao);
+//         Insert<FeeRate> insert_op2(dao);
+//
+//         // Add operations to transaction (second one will fail)
+//         transaction.add(std::move(insert_op1), test_data[1]);
+//         transaction.add(std::move(insert_op2), test_data[0]); // Duplicate primary key
+//
+//         // Execute transaction - should throw and rollback
+//         REQUIRE_THROWS(transaction());
+//
+//         // Verify only the first record exists (transaction rolled back)
+//         auto all_records = dao->queryAll();
+//         CHECK(all_records.size() == 1);
+//         CHECK(all_records[0].symbol == "ETHUSDT");
+//         CHECK_FALSE(transaction.is_executed());
+//     }
+// }
+
+TEST_CASE("Dao<FeeRate> - Direct operation usage", "[dao][fee_rate][operations]") {
+    TestDatabase test_db;
+    
+    // Create DAO with symbol as primary key - table created automatically in constructor
+    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
+    
+    // Create test data
+    FeeRate test_fee_rate{
+        std::string{"ETHUSDT"},   // symbol (primary key)
+        std::nullopt,             // baseCoin
+        "0.0006",                 // takerFeeRate
+        "0.0001"                  // makerFeeRate
+    };
+    
+    SECTION("Direct Insert operation") {
+        Insert insert_op(dao);
+        insert_op(test_fee_rate);
+        
+        // Verify insertion
+        auto all_records = dao->query();
+        CHECK(all_records.size() == 1);
+    }
+    
+    SECTION("Direct Query operation") {
+        // Insert test data first
+        dao->insert(test_fee_rate);
+        
+        // Test query all
+        Query query_all_op(dao);
+        auto all_records = query_all_op();
+        CHECK(all_records.size() == 1);
+        
+        // Test query with condition
+        auto condition = QueryCondition::where("symbol", QueryOperator::Equal);
+        Query query_cond_op(dao, condition);
+        auto filtered_records = query_cond_op("ETHUSDT");
+        CHECK(filtered_records.size() == 1);
+        CHECK(filtered_records[0].symbol == "ETHUSDT");
+    }
+    
+    SECTION("Direct Update operation") {
+        // Insert test data first
+        dao->insert(test_fee_rate);
+        
+        // Modify the fee rate
+        test_fee_rate.takerFeeRate = "0.0007";
+        
+        // Update using operation
+        Update update_op(dao);
+        update_op(test_fee_rate);
+        
+        // Verify update
+        auto all_records = dao->query();
+        CHECK(all_records.size() == 1);
+        CHECK(all_records[0].takerFeeRate == "0.0007");
+    }
+    
+    SECTION("Direct Delete operation") {
+        // Insert test data first
+        dao->insert(test_fee_rate);
+        
+        // Delete using operation
+        auto condition = QueryCondition::where("symbol", QueryOperator::Equal);
+        Delete delete_op(dao, condition);
+        delete_op("ETHUSDT");
+        
+        // Verify deletion
+        auto all_records = dao->query();
+        CHECK(all_records.empty());
+    }
+    
+    SECTION("Direct Count operation") {
+        // Insert test data first
+        dao->insert(test_fee_rate);
+        
+        // Count all
+        Count count_all_op(dao);
+        auto total_count = count_all_op();
+        CHECK(total_count == 1);
+        
+        // Count with condition
+        auto condition = QueryCondition::where("symbol", QueryOperator::Equal);
+        Count count_cond_op(dao, condition);
+        auto filtered_count = count_cond_op("ETHUSDT");
+        CHECK(filtered_count == 1);
+    }
+}
 
 namespace SQLite {
 void assertion_failed(const char* apFile, int apLine, const char* apFunc, const char* apExpr, const char* apMsg) {

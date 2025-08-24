@@ -103,9 +103,10 @@ set(core_SOURCES
         src/data/bybit/error.hpp
         src/data/bybit/subscription.hpp
         src/dao/dao.hpp
-        src/dao/dao_impl.hpp
+        src/dao/operations.hpp
         src/dao/query_builder.hpp
         src/dao/query_builder.cpp
+        src/dao/metadata.hpp
 )
 
 add_library(core STATIC ${core_SOURCES})
