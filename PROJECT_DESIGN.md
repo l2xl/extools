@@ -13,6 +13,57 @@
 ## Current Session Changes
 *This section tracks changes made in current development session*
 
+### Connect Component Implementation - Phase 1 Complete
+**Changes Made:**
+1. **Generic Connection Concept**: Redesigned connection interface to be completely generic
+   - `setup()` method receives generic data handler and variable arguments
+   - `cancel()` method for operation/subscription cancellation
+   - `is_active()` method for connection state checking
+   - Connection implementations interpret arguments independently
+
+2. **ConnectionContext Class**: Shared connection infrastructure
+   - Holds AsioScheduler reference for async operations
+   - Manages host resolution and caching (DNS resolution on creation)
+   - Stores connection parameters (host, port, base_path, timeout)
+   - Provides `wait_for_resolution()` for async DNS completion
+
+3. **JsonRpcConnection Implementation**: Single-time HTTP JSON-RPC requests
+   - Created per request by data provider
+   - Setup arguments: `handler, request_path, [url_params]`
+   - Handler signature: `std::function<void(std::string)>` (receives JSON response)
+   - SSL/HTTPS support with proper SNI handling
+   - Cancellation support with atomic flags
+
+4. **WebSocketConnection Implementation**: Persistent WebSocket subscriptions
+   - Shared between multiple DataSinks using factory pattern (`WebSocketConnection::create()`)
+   - Setup arguments: `handler, subscription_id, subscription_message`
+   - Handler signature: `std::function<void(const std::string&)>` (receives JSON messages)
+   - Connection opens after first setup() call
+   - Message distribution to all registered handlers
+   - Heartbeat/ping support for connection maintenance
+   - Subscription management with removal support
+   - Private constructor with `EnsurePrivate` parameter prevents external instantiation
+
+**Technical Implementation:**
+- Generic setup() method using variadic templates and perfect forwarding
+- SSL/TLS support for both HTTP and WebSocket connections
+- Async DNS resolution with caching in ConnectionContext
+- Thread-safe subscription management for WebSocket connections
+- Proper error handling and cancellation support
+- Integration with existing AsioScheduler and SSL context
+- Factory pattern for `std::enable_shared_from_this` classes with private constructors
+- `EnsurePrivate` parameter prevents external instantiation of shared objects
+
+**Directory Structure:**
+```
+src/connect/
+├── connect.hpp                    # Main header with usage documentation
+├── connection_concept.hpp         # Generic Connection concept definition
+├── connection_context.hpp/.cpp    # Shared connection infrastructure
+├── json_rpc_connection.hpp/.cpp   # Single-time HTTP requests
+└── websocket_connection.hpp/.cpp  # Persistent WebSocket subscriptions
+```
+
 ### DAO Layer Implementation - Phase 1 Complete
 **Changes Made:**
 1. **RAII Constructor Implementation**: Updated `Dao<Entity>` template class to follow RAII principles

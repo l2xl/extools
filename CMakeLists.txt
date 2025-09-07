@@ -43,7 +43,7 @@ find_package(OpenSSL REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
-find_package(Boost 1.83 REQUIRED COMPONENTS context system)
+find_package(Boost 1.83 REQUIRED COMPONENTS context system url)
 
 # Add oneTBB library
 CPMAddPackage(
@@ -107,6 +107,12 @@ set(core_SOURCES
         src/dao/query_builder.hpp
         src/dao/query_builder.cpp
         src/dao/metadata.hpp
+        src/connect/connection_context.hpp
+        src/connect/connection_context.cpp
+        src/connect/http_query.hpp
+        src/connect/http_query.cpp
+        src/connect/websocket.hpp
+        src/connect/websocket.cpp
 )
 
 add_library(core STATIC ${core_SOURCES})
@@ -183,6 +189,8 @@ if(NOT ANDROID)
     add_test(test_currency test/common/test_currency.cpp)
     add_test(test_buoy_candle test/core/test_buoy_candle.cpp)
     add_test(test_dao test/dao/test_dao.cpp)
+    add_test(test_http_query test/connect/test_http_query.cpp)
+    add_test(test_websocket test/connect/test_websocket.cpp)
 
 endif()
 
