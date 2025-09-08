@@ -152,10 +152,12 @@ boost::asio::awaitable<void> websock_connection::co_exec_loop(std::weak_ptr<webs
     namespace this_coro = boost::asio::this_coro;
     
     try {
+        std::function<void(std::exception_ptr e, std::string message)> handler;
         for (;;) {
             try {
                 if (auto self = ref.lock()) {
                     co_await co_open(self);
+                    handler = self->m_handler;
                     break;
                 }
                 co_return;
@@ -169,10 +171,8 @@ boost::asio::awaitable<void> websock_connection::co_exec_loop(std::weak_ptr<webs
             co_await boost::asio::steady_timer(co_await this_coro::executor, std::chrono::milliseconds(250)).async_wait(use_awaitable);
         }
 
-        if (auto self = ref.lock()) {
-            for ( ;self->m_handler; ) {
-                self->m_handler(nullptr, co_await co_read(self));
-            }
+        for ( ; handler; ) {
+            handler(nullptr, co_await co_read(ref));
         }
         co_return;
     }
@@ -213,7 +213,7 @@ boost::asio::awaitable<void> websock_connection::co_open(std::shared_ptr<websock
             self->m_websocket.reset();
         }
 
-        auto websock = std::make_unique<websocket_stream>(co_await this_coro::executor, context->scheduler()->ssl());
+        auto websock = std::make_shared<websocket_stream>(co_await this_coro::executor, context->scheduler()->ssl());
 
         get_lowest_layer(*websock).expires_after(std::chrono::seconds(30));
 
@@ -258,15 +258,19 @@ boost::asio::awaitable<void> websock_connection::co_open(std::shared_ptr<websock
     }
 }
 
-boost::asio::awaitable<std::string> websock_connection::co_read(std::shared_ptr<websock_connection> self)
+boost::asio::awaitable<std::string> websock_connection::co_read(std::weak_ptr<websock_connection> ref)
 {
     boost::beast::flat_buffer buffer;
 
+    std::shared_ptr<websocket_stream> websocket;
     for (;;) {
-        if (self->m_status != status::READY)
-            break;
+        if (auto self = ref.lock()) {
+            if (self->m_status != status::READY)
+                break;
+            websocket = self->m_websocket;
+        }
 
-        co_await self->m_websocket->async_read(buffer, use_awaitable);
+        co_await websocket->async_read(buffer, use_awaitable);
 
         if (buffer.size() != 0) {
             std::string data = boost::beast::buffers_to_string(buffer.data());
@@ -276,7 +280,7 @@ boost::asio::awaitable<std::string> websock_connection::co_read(std::shared_ptr<
         }
     }
 
-    if (self->m_status != status::STALE) {
+    if (auto self = ref.lock(); self && self->m_status != status::STALE) {
         status s = self->m_status;
         throw std::runtime_error("Stream has wrong status: " + std::to_string((int)s));
     }

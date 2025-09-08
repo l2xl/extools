@@ -61,7 +61,7 @@ class websock_connection : public std::enable_shared_from_this<websock_connectio
     std::string m_port;
     std::string m_path_query;
 
-    std::unique_ptr<websocket_stream> m_websocket;
+    std::shared_ptr<websocket_stream> m_websocket;
 
     // Heartbeat management
     std::function<std::string(size_t)> m_make_heartbeat_mesage = [](size_t){ return std::string{}; };
@@ -73,7 +73,7 @@ class websock_connection : public std::enable_shared_from_this<websock_connectio
     static boost::asio::awaitable<void> co_heartbeat_loop(std::weak_ptr<websock_connection>);
     static boost::asio::awaitable<void> co_exec_loop(std::weak_ptr<websock_connection>);
     static boost::asio::awaitable<void> co_open(std::shared_ptr<websock_connection>);
-    static boost::asio::awaitable<std::string> co_read(std::shared_ptr<websock_connection>);
+    static boost::asio::awaitable<std::string> co_read(std::weak_ptr<websock_connection>);
     static boost::asio::awaitable<void> co_message(std::shared_ptr<websock_connection>, std::string message);
     
     struct EnsurePrivate {};
