@@ -25,7 +25,12 @@ std::string QueryBuilder::select_count_where(const std::string& table_name, cons
 }
 
 std::string QueryBuilder::insert(const std::string& table_name, const std::vector<std::string>& columns) {
-    return "INSERT INTO " + table_name + " (" + join_columns(columns) + ") VALUES (" + 
+    return "INSERT INTO " + table_name + " (" + join_columns(columns) + ") VALUES (" +
+           generate_placeholders(columns.size()) + ")";
+}
+
+std::string QueryBuilder::insert_or_replace(const std::string& table_name, const std::vector<std::string>& columns) {
+    return "INSERT OR REPLACE INTO " + table_name + " (" + join_columns(columns) + ") VALUES (" +
            generate_placeholders(columns.size()) + ")";
 }
 

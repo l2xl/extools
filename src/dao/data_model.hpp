@@ -34,22 +34,22 @@ class QueryCondition;
  * Uses operation classes for encapsulated database operations with precompiled statements
  */
 template<typename Entity, auto PrimaryKey>
-class Dao : public std::enable_shared_from_this<Dao<Entity, PrimaryKey> >
+class data_model : public std::enable_shared_from_this<data_model<Entity, PrimaryKey> >
 {
 public:
     typedef Entity entity_type;
     typedef EntityMetadata<entity_type, PrimaryKey> metadata_type;
 private:
     std::shared_ptr<SQLite::Database> m_db;
-    EntityMetadata<Entity, PrimaryKey> m_metadata;
+    metadata_type m_metadata;
 
     struct EnsurePrivate {};
 public:
     // RAII constructor - automatically creates metadata from Entity type using Glaze reflection
     // Table is created synchronously during construction (RAII guarantee)
-    explicit Dao(std::shared_ptr<SQLite::Database> db, EnsurePrivate)
+    explicit data_model(std::shared_ptr<SQLite::Database> db, EnsurePrivate)
         : m_db(std::move(db))
-        , m_metadata(EntityMetadata<Entity, PrimaryKey>::Create())
+        , m_metadata(metadata_type::Create())
     {
         if (!m_db) {
             throw std::invalid_argument("Database connection cannot be null");
@@ -61,8 +61,8 @@ public:
         }
     }
 
-    static std::shared_ptr<Dao> Create(std::shared_ptr<SQLite::Database> db)
-    { return std::make_shared<Dao>(db, EnsurePrivate{}); }
+    static std::shared_ptr<data_model> create(std::shared_ptr<SQLite::Database> db)
+    { return std::make_shared<data_model>(db, EnsurePrivate{}); }
 
     const std::string& name() const
     { return m_metadata.table_name; }
@@ -70,24 +70,29 @@ public:
     const SQLite::Database& database() const
     { return *m_db; }
 
-    const EntityMetadata<Entity, PrimaryKey>& metadata() const
+    const metadata_type& metadata() const
     { return m_metadata; }
 
     void insert(const Entity &entity) {
-        Insert<Dao> insert_op(this->shared_from_this());
+        Insert<data_model> insert_op(this->shared_from_this());
         insert_op(entity);
+    }
+
+    void insert_or_replace(const Entity &entity) {
+        InsertOrReplace<data_model> insert_or_replace_op(this->shared_from_this());
+        insert_or_replace_op(entity);
     }
 
     // Variadic template query method - primary interface for conditional queries
     template<typename... Args>
-    std::vector<Entity> query(const QueryCondition &condition = {}, Args&&... args) {
-        Query<Dao> query_op(this->shared_from_this(), condition);
+    std::deque<Entity> query(const QueryCondition &condition = {}, Args&&... args) {
+        Query<data_model> query_op(this->shared_from_this(), condition);
         return query_op(std::forward<Args>(args)...);
     }
 
     // Update method - updates entity by primary key
     void update(const Entity &entity) {
-        Update<Dao> update_op(this->shared_from_this());
+        Update<data_model> update_op(this->shared_from_this());
         update_op(entity);
     }
 
@@ -97,18 +102,18 @@ public:
         if (condition.empty()) {
             throw std::invalid_argument("Delete condition cannot be empty");
         }
-        Delete<Dao> delete_op(this->shared_from_this(), condition);
+        Delete<data_model> delete_op(this->shared_from_this(), condition);
         delete_op(std::forward<Args>(args)...);
     }
 
     // Variadic template count method - primary interface for conditional counts
     template<typename... Args>
     size_t count(const QueryCondition &condition = {}, Args&&... args) {
-        Count<Dao> count_op(this->shared_from_this(), condition);
+        Count<data_model> count_op(this->shared_from_this(), condition);
         return count_op(std::forward<Args>(args)...);
     }
 
-    void dropTable() {
+    void drop_table() {
         if (m_db->tableExists(name())) {
             std::string sql = QueryBuilder::drop_table(m_metadata.table_name);
             m_db->exec(sql);

@@ -28,73 +28,75 @@
 namespace scratcher::connect {
 
 /**
- * @brief JsonRpcConnection implements single-time HTTP JSON-RPC requests
- * 
+ * @brief http_query implements single-time HTTP requests
+ *
  * This connection type is designed for one-time requests where:
  * - Each connection instance handles a single request
  * - Data provider creates connection per request
  * - DataSink calls operator() to execute the request and receive response
- * 
- * Handler callback type:
- * - std::function<void(std::exception_ptr, std::string)> - co_spawn completion handler
+ *
+ * Handler callback types:
+ * - std::function<void(std::string)> - receives JSON response data
+ * - std::function<void(std::exception_ptr)> - receives errors
  */
-class http_query
+class http_query : public std::enable_shared_from_this<http_query>
 {
     std::weak_ptr<context> m_context;
-    std::function<void(std::exception_ptr, std::string)> m_handler;
+    std::function<void(std::string)> m_data_handler;
+    std::function<void(std::exception_ptr)> m_error_handler;
     std::string m_host;
     std::string m_port;
-    std::string m_path_query;
+    std::string m_path;
+    std::string m_query;
 
-    // SSL stream type for HTTPS requests
-    using ssl_stream = boost::beast::ssl_stream<boost::beast::tcp_stream>;
-    
+    struct ensure_private {};
+
 public:
+    explicit http_query(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler, ensure_private);
+
     /**
-     * @brief Construct JsonRpcConnection with connection context and handler
+     * @brief Create http_query instance
      * @param context Shared connection context with host resolution
      * @param url Full URL to request (e.g., "https://api.bybit.com/v5/market/time")
-     * @param handler Data handler that receives exception_ptr and JSON response string
+     * @param data_handler Handler that receives JSON response string
+     * @param error_handler Handler that receives errors
      */
-    explicit http_query(std::shared_ptr<context> context, const std::string& url, std::function<void(std::exception_ptr, std::string)> handler)
-        : m_context(std::move(context)), m_handler(std::move(handler))
-    {
-        try {
-            auto parsed_url = boost::urls::parse_uri(url);
+    static std::shared_ptr<http_query> create(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler);
 
-            std::string scheme = parsed_url.value().scheme();
-            m_host = parsed_url.value().host();
-            m_port = parsed_url.value().port();
-            m_path_query = parsed_url.value().path();
-
-            if (parsed_url.value().has_query())
-                m_path_query += ("?" + parsed_url.value().query());
-
-            if (m_port.empty()) {
-                if (scheme == "https")
-                    m_port = "443";
-                else
-                    throw std::invalid_argument("Unsupported scheme: " + scheme);
-            }
-        }
-        catch (...) {
-            std::throw_with_nested(std::invalid_argument("Invalid URL: " + url));
-        }
-    }
-    
     /**
-     * @brief Execute the HTTP request
+     * @brief Create http_query instance with generic callable handlers
+     * @tparam DataAcceptor Callable accepting std::string (e.g., data_dispatcher, data_adapter, lambda)
+     * @tparam ErrorHandler Callable accepting std::exception_ptr
+     * @param context Shared connection context with host resolution
+     * @param url Full URL to request (e.g., "https://api.bybit.com/v5/market/time")
+     * @param data_handler Handler that receives JSON response (data_dispatcher, data_adapter, etc.)
+     * @param error_handler Handler that receives errors
      */
-    void operator()()
+    template<typename DataAcceptor, typename ErrorHandler>
+    static std::shared_ptr<http_query> create(std::shared_ptr<context> context, const std::string& url, DataAcceptor&& data_handler, ErrorHandler&& error_handler)
     {
-        if (auto ctx = m_context.lock())
-        {
-            boost::asio::co_spawn(ctx->scheduler()->io(), co_request(m_context, m_host, m_port, m_path_query), m_handler);
-        }
+        // Wrap callables in std::function for type erasure
+        std::function<void(std::string)> wrapped_data_handler =
+            [handler = std::forward<DataAcceptor>(data_handler)](std::string data) mutable {
+                handler(std::move(data));
+            };
+
+        std::function<void(std::exception_ptr)> wrapped_error_handler =
+            [handler = std::forward<ErrorHandler>(error_handler)](std::exception_ptr e) mutable {
+                handler(e);
+            };
+
+        return create(std::move(context), url, std::move(wrapped_data_handler), std::move(wrapped_error_handler));
     }
-    
+
+    /**
+     * @brief Execute the HTTP request with additional query parameters
+     * @param query_params Query string to append to the initial path/query (e.g., "&symbol=BTCUSDT")
+     */
+    void operator()(std::string query_params = {});
+
 private:
-    static boost::asio::awaitable<std::string> co_request(std::weak_ptr<context> ctx_ref, std::string host, std::string port, std::string path);
+    static boost::asio::awaitable<std::string> co_request(std::weak_ptr<http_query> ref, std::string path_query);
 };
 
 

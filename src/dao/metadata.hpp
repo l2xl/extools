@@ -28,19 +28,9 @@ namespace scratcher::dao {
 namespace detail {
 
 
-// template <class T, class = std::make_index_sequence<glz::reflect<T>::size>>
-// struct member_tuple_type;
-//
-// template <class T, size_t... I>
-// struct member_tuple_type<T, std::index_sequence<I...>>
-// {
-//     using type = std::conditional_t<sizeof...(I) == 0, std::tuple<>, std::tuple<std::remove_cvref_t<glz::member_t<T, glz::refl_t<T, I>>>...>>;
-// };
-
-
 // Helper to find field index by member pointer at runtime
 template<typename Entity, auto MemberPtr>
-std::size_t find_member_index() {
+constexpr std::size_t find_member_index() {
     constexpr auto field_count = glz::reflect<Entity>::size;
     constexpr auto member_names = glz::member_names<Entity>;
     
@@ -70,54 +60,7 @@ std::size_t find_member_index() {
     return result;
 }
 
-// Convert QueryValue back to C++ types
-template<typename T>
-T convert_query_value(const QueryValue &value)
-{
-    if constexpr (std::is_same_v<T, std::string>) {
-        return std::get<std::string>(value);
-    } else if constexpr (std::is_same_v<T, bool>) {
-        return std::get<bool>(value);
-    } else if constexpr (std::is_integral_v<T>) {
-        return static_cast<T>(std::get<int64_t>(value));
-    } else if constexpr (std::is_floating_point_v<T>) {
-        return static_cast<T>(std::get<double>(value));
-    } else if constexpr (requires { typename T::value_type; } && std::is_same_v<T, std::optional<typename T::value_type>>) {
-        // Handle std::optional types
-        using UnderlyingType = typename T::value_type;
-        if (std::holds_alternative<std::monostate>(value)) {
-            return T{}; // Return empty optional for null values
-        } else {
-            return T{convert_query_value<UnderlyingType>(value)};
-        }
-    } else {
-        return T{}; // Default construction for complex types
-    }
-}
 
-// Convert C++ types to QueryValue
-template<typename T>
-QueryValue convert_to_query_value(const T &value)
-{
-    if constexpr (std::is_same_v<T, std::string>) {
-        return value;
-    } else if constexpr (std::is_same_v<T, bool>) {
-        return value;
-    } else if constexpr (std::is_integral_v<T>) {
-        return static_cast<int64_t>(value);
-    } else if constexpr (std::is_floating_point_v<T>) {
-        return static_cast<double>(value);
-    } else if constexpr (requires { typename T::value_type; } && std::is_same_v<T, std::optional<typename T::value_type>>) {
-        // Handle std::optional types
-        if (value.has_value()) {
-            return convert_to_query_value(value.value());
-        } else {
-            return std::monostate{}; // Return null for empty optional
-        }
-    } else {
-        return std::string{}; // Default for complex types
-    }
-}
 
 // Helper functions for value conversion
 template<typename T>
@@ -148,6 +91,8 @@ T convert_from_string(const std::string &str)
         return static_cast<T>(std::stoll(str));
     } else if constexpr (std::is_floating_point_v<T>) {
         return static_cast<T>(std::stod(str));
+    } else if constexpr (std::is_enum_v<T>) {
+        return static_cast<T>(std::stol(str));
     } else if constexpr (requires { typename T::value_type; } && std::is_same_v<T, std::optional<typename T::value_type>>) {
         // Handle std::optional types
         if (str.empty()) {
@@ -172,6 +117,8 @@ std::string get_sql_type()
         return "REAL";
     } else if constexpr (std::is_same_v<T, bool>) {
         return "INTEGER"; // SQLite stores booleans as integers
+    } else if constexpr (std::is_enum_v<T>){
+        return "INTEGER";
     } else if constexpr (requires { typename T::value_type; } && std::is_same_v<T, std::optional<typename T::value_type>>) {
         // Handle std::optional types - use the underlying type
         return get_sql_type<typename T::value_type>();
@@ -180,11 +127,13 @@ std::string get_sql_type()
     }
 }
 
-// Helper to create entity from values using Glaze reflection
-template<typename Entity>
-Entity create_entity_from_values(const std::vector<QueryValue> &values)
+// Helper to create entity from tuple using Glaze reflection
+template<typename Entity, typename ValueTuple>
+Entity create_entity_from_tuple(const ValueTuple &values)
 {
     constexpr auto field_count = glz::reflect<Entity>::size;
+    constexpr auto tuple_size = std::tuple_size_v<ValueTuple>;
+    static_assert(field_count == tuple_size, "Entity field count must match tuple size");
 
     if constexpr (field_count == 0) {
         return Entity{};
@@ -192,13 +141,10 @@ Entity create_entity_from_values(const std::vector<QueryValue> &values)
         Entity entity{};
         auto tie = glz::to_tie(entity);
 
-        // Convert values and assign to fields using Glaze tuple access
+        // Assign values from tuple to fields using Glaze tuple access
         [&]<std::size_t... I>(std::index_sequence<I...>) {
             auto assign_field = [&]<std::size_t Idx>() {
-                if (Idx < values.size()) {
-                    using FieldType = std::decay_t<decltype(glz::get<Idx>(tie))>;
-                    glz::get<Idx>(tie) = convert_query_value<FieldType>(values[Idx]);
-                }
+                glz::get<Idx>(tie) = std::get<Idx>(values);
             };
             (assign_field.template operator()<I>(), ...);
         }(std::make_index_sequence<field_count>{});
@@ -207,25 +153,6 @@ Entity create_entity_from_values(const std::vector<QueryValue> &values)
     }
 }
 
-// Helper to extract values from entity using Glaze reflection
-template<typename Entity>
-std::vector<QueryValue> extract_entity_values(const Entity &entity)
-{
-    std::vector<QueryValue> values;
-    constexpr auto field_count = glz::reflect<Entity>::size;
-
-    if constexpr (field_count > 0) {
-        auto tie = glz::to_tie(entity);
-        values.reserve(field_count);
-
-        // Extract values using compile-time iteration
-        [&]<std::size_t... I>(std::index_sequence<I...>) {
-            (values.emplace_back(convert_to_query_value(glz::get<I>(tie))), ...);
-        }(std::make_index_sequence<field_count>{});
-    }
-
-    return values;
-}
 
 // Helper to extract values from entity as tuple using Glaze reflection
 template<typename Entity>
@@ -235,10 +162,10 @@ auto extract_entity_values_as_tuple(const Entity &entity)
 
     if constexpr (field_count > 0) {
         auto tie = glz::to_tie(entity);
-        
+
         // Extract values as tuple using compile-time iteration
         return [&]<std::size_t... I>(std::index_sequence<I...>) {
-            return std::make_tuple(convert_to_query_value(glz::get<I>(tie))...);
+            return std::make_tuple(glz::get<I>(tie)...);
         }(std::make_index_sequence<field_count>{});
     } else {
         return std::tuple<>{};
@@ -310,8 +237,52 @@ public:
     std::vector<std::string> column_names;
     std::vector<std::string> column_definitions;
 
-    // Function to create entity from database values
-    std::function<Entity(const std::vector<QueryValue> &)> create_entity;
+    // Function to create entity from database tuple
+    // template<typename ValueTuple>
+    // Entity create_entity_from_tuple(const ValueTuple& values) const {
+    //     return detail::create_entity_from_tuple<Entity>(values);
+    // }
+
+    // Function to create entity from generic database values
+    template<typename GenericValue>
+    Entity create_entity_from_generic_values(const std::vector<GenericValue>& values) const {
+        constexpr auto field_count = glz::reflect<Entity>::size;
+
+        if constexpr (field_count == 0) {
+            return Entity{};
+        } else {
+            Entity entity{};
+            auto tie = glz::to_tie(entity);
+
+            // Convert generic values and assign to fields using Glaze tuple access
+            [&]<std::size_t... I>(std::index_sequence<I...>) {
+                auto assign_field = [&]<std::size_t Idx>() {
+                    if (Idx < values.size()) {
+                        using FieldType = std::decay_t<decltype(glz::get<Idx>(tie))>;
+
+                        // Convert from generic variant to actual field type
+                        std::visit([&](const auto& variant_value) {
+                            using VT = std::decay_t<decltype(variant_value)>;
+                            if constexpr (std::is_same_v<VT, std::monostate>) {
+                                glz::get<Idx>(tie) = FieldType{}; // Default value for null
+                            } else if constexpr (std::is_same_v<FieldType, VT>) {
+                                glz::get<Idx>(tie) = variant_value; // Direct assignment
+                            } else if constexpr (std::is_convertible_v<VT, FieldType>) {
+                                glz::get<Idx>(tie) = static_cast<FieldType>(variant_value); // Safe conversion
+                            } else if constexpr (std::is_same_v<FieldType, bool> && std::is_integral_v<VT>) {
+                                glz::get<Idx>(tie) = variant_value != 0; // Convert integer to bool
+                            } else {
+                                glz::get<Idx>(tie) = FieldType{}; // Default for incompatible types
+                            }
+                        }, values[Idx]);
+                    }
+                };
+                (assign_field.template operator()<I>(), ...);
+            }(std::make_index_sequence<field_count>{});
+
+            return entity;
+        }
+    }
     
     // Extract values from entity as tuple for database operations
     auto extract_values_as_tuple(const Entity& entity) const {
@@ -319,9 +290,9 @@ public:
     }
     
     // Extract values from entity as vector for backward compatibility
-    std::vector<QueryValue> extract_values(const Entity& entity) const {
-        return detail::extract_entity_values(entity);
-    }
+    // std::vector<QueryValue> extract_values(const Entity& entity) const {
+    //     return detail::extract_entity_values(entity);
+    // }
 
     std::size_t primary_key_index;
     std::string primary_key_name;
@@ -381,10 +352,6 @@ public:
             (process_field.template operator()<I>(), ...);
         }(std::make_index_sequence<field_count>{});
 
-        // Set up creation function using Glaze reflection
-        metadata.create_entity = [](const std::vector<QueryValue> &values) -> Entity {
-            return detail::create_entity_from_values<Entity>(values);
-        };
 
         return metadata;
     }

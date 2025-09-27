@@ -18,8 +18,9 @@
 #include <iostream>
 #include <SQLiteCpp/SQLiteCpp.h>
 
-#include "dao.hpp"
+#include "data_model.hpp"
 #include "data/bybit/entities/fee_rate.hpp"
+#include "data/bybit/entities/public_trade.hpp"
 
 using namespace scratcher::dao;
 using namespace scratcher::bybit;
@@ -35,11 +36,11 @@ public:
     std::shared_ptr<SQLite::Database> db;
 };
 
-TEST_CASE("Dao<FeeRate> - Create and verify empty database", "[dao][fee_rate]") {
+TEST_CASE("data_model<FeeRate> - Create and verify empty database", "[dao][fee_rate]") {
     TestDatabase test_db;
     
     // Create DAO with symbol as primary key - table created automatically in constructor
-    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
+    auto dao = data_model<FeeRate, &FeeRate::symbol>::create(test_db.db);
     
     // Query empty database - should return no records
     auto all_records = dao->query();
@@ -50,11 +51,26 @@ TEST_CASE("Dao<FeeRate> - Create and verify empty database", "[dao][fee_rate]") 
     CHECK(count == 0);
 }
 
-TEST_CASE("Dao<FeeRate> - Insert and query record from ByBit JSON", "[dao][fee_rate]") {
+TEST_CASE("data_model<PublicTrade> - Create and verify empty database", "[dao][public_trade]") {
+    TestDatabase test_db;
+
+    // Create DAO with symbol as primary key - table created automatically in constructor
+    auto dao = data_model<PublicTrade, &PublicTrade::exec_id>::create(test_db.db);
+
+    // Query empty database - should return no records
+    auto all_records = dao->query();
+    CHECK(all_records.empty());
+
+    // Count should be 0
+    auto count = dao->count();
+    CHECK(count == 0);
+}
+
+TEST_CASE("data_model<FeeRate> - Insert and query record from ByBit JSON", "[dao][fee_rate]") {
     TestDatabase test_db;
     
     // Create DAO with symbol as primary key - table created automatically in constructor
-    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
+    auto dao = data_model<FeeRate, &FeeRate::symbol>::create(test_db.db);
     
     // ByBit API example JSON from documentation
     std::string bybit_json = R"({
@@ -93,11 +109,11 @@ TEST_CASE("Dao<FeeRate> - Insert and query record from ByBit JSON", "[dao][fee_r
     CHECK_FALSE(retrieved_record.baseCoin.has_value());
 }
 
-TEST_CASE("Dao<FeeRate> - Query using every method", "[dao][fee_rate]") {
+TEST_CASE("data_model<FeeRate> - Query using every method", "[dao][fee_rate]") {
     TestDatabase test_db;
     
     // Create DAO with symbol as primary key - table created automatically in constructor
-    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
+    auto dao = data_model<FeeRate, &FeeRate::symbol>::create(test_db.db);
     
     // Create test data - multiple fee rates
     std::vector<FeeRate> test_data = {
@@ -198,11 +214,11 @@ TEST_CASE("Dao<FeeRate> - Query using every method", "[dao][fee_rate]") {
     }
 }
 
-TEST_CASE("Dao<FeeRate> - ByBit API response with baseCoin", "[dao][fee_rate]") {
+TEST_CASE("data_model<FeeRate> - ByBit API response with baseCoin", "[dao][fee_rate]") {
     TestDatabase test_db;
     
     // Create DAO with symbol as primary key - table created automatically in constructor
-    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
+    auto dao = data_model<FeeRate, &FeeRate::symbol>::create(test_db.db);
 
     // ByBit API example with baseCoin (for futures/derivatives)
     std::string bybit_json_with_base = R"({
@@ -236,11 +252,11 @@ TEST_CASE("Dao<FeeRate> - ByBit API response with baseCoin", "[dao][fee_rate]") 
     CHECK(retrieved.baseCoin.value() == "BTC");
 }
 
-TEST_CASE("Dao<FeeRate> - Batch insert", "[dao][fee_rate]") {
+TEST_CASE("data_model<FeeRate> - Batch insert", "[dao][fee_rate]") {
     TestDatabase test_db;
     
     // Create DAO with symbol as primary key - table created automatically in constructor
-    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
+    auto dao = data_model<FeeRate, &FeeRate::symbol>::create(test_db.db);
     
     // Create test data - multiple fee rates
     std::vector<FeeRate> test_data = {
@@ -277,11 +293,11 @@ TEST_CASE("Dao<FeeRate> - Batch insert", "[dao][fee_rate]") {
     CHECK(total_count == 3);
 }
 
-// TEST_CASE("Dao<FeeRate> - Transaction operations", "[dao][fee_rate][transaction]") {
+// TEST_CASE("data_model<FeeRate> - Transaction operations", "[dao][fee_rate][transaction]") {
 //     TestDatabase test_db;
 //
 //     // Create DAO with symbol as primary key - table created automatically in constructor
-//     auto dao = Dao<FeeRate>::Create(test_db.db);
+//     auto dao = data_model<FeeRate>::create(test_db.db);
 //
 //     // Create test data
 //     std::vector<FeeRate> test_data = {
@@ -346,11 +362,11 @@ TEST_CASE("Dao<FeeRate> - Batch insert", "[dao][fee_rate]") {
 //     }
 // }
 
-TEST_CASE("Dao<FeeRate> - Direct operation usage", "[dao][fee_rate][operations]") {
+TEST_CASE("data_model<FeeRate> - Direct operation usage", "[dao][fee_rate][operations]") {
     TestDatabase test_db;
     
     // Create DAO with symbol as primary key - table created automatically in constructor
-    auto dao = Dao<FeeRate, &FeeRate::symbol>::Create(test_db.db);
+    auto dao = data_model<FeeRate, &FeeRate::symbol>::create(test_db.db);
     
     // Create test data
     FeeRate test_fee_rate{

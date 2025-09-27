@@ -11,8 +11,8 @@
 // =KKu7
 // -----END PGP PUBLIC KEY BLOCK-----
 
-#ifndef DB_STORAGE_HPP
-#define DB_STORAGE_HPP
+#ifndef SCRATCHER_DB_STORAGE_HPP
+#define SCRATCHER_DB_STORAGE_HPP
 
 #include <string>
 #include <memory>
@@ -74,4 +74,4 @@ public:
 
 } // namespace scratcher
 
-#endif // DB_STORAGE_HPP
+#endif // SCRATCHER_DB_STORAGE_HPP

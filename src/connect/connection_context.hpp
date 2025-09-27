@@ -38,8 +38,6 @@ namespace scratcher::connect {
 class context : public std::enable_shared_from_this<context>
 {
 public:
-    struct EnsurePrivate {};
-    
     // Key for resolution cache (host:port)
     using HostPortKey = std::string;
 
@@ -53,13 +51,14 @@ private:
     // Connection parameters
     std::chrono::milliseconds m_timeout;
 
+    struct ensure_private {};
 public:
     /**
      * @brief Construct ConnectionContext with required parameters
      * @param scheduler AsioScheduler for async operations
      * @param timeout Request timeout duration
      */
-    context(std::shared_ptr<AsioScheduler> scheduler, std::chrono::milliseconds timeout, EnsurePrivate)
+    context(std::shared_ptr<AsioScheduler> scheduler, std::chrono::milliseconds timeout, ensure_private)
         : m_scheduler(std::move(scheduler))
         , m_resolution_strand(boost::asio::make_strand(m_scheduler->io()))
         , m_timeout(timeout)

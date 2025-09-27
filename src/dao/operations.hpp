@@ -1,7 +1,7 @@
 #ifndef SCRATCHER_DAO_OPERATIONS_HPP
 #define SCRATCHER_DAO_OPERATIONS_HPP
 
-#include "dao.hpp"
+#include "data_model.hpp"
 #include "query_builder.hpp"
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <memory>
@@ -9,6 +9,7 @@
 #include <functional>
 #include <algorithm>
 #include <utility>
+#include <deque>
 
 #include "sqlite3.h"
 
@@ -96,26 +97,17 @@ private:
             m_statement.bind(Index, static_cast<double>(value));
         } else if constexpr (std::is_same_v<DecayedT, bool>) {
             m_statement.bind(Index, value ? 1 : 0);
+        } else if constexpr (std::is_enum_v<DecayedT>) {
+            m_statement.bind(Index, static_cast<int64_t>(value));
         } else if constexpr (std::is_same_v<DecayedT, std::monostate>) {
             m_statement.bind(Index); // Bind NULL
-        } else if constexpr (std::is_same_v<DecayedT, QueryValue>) {
-            // Handle QueryValue variant directly
-            std::visit([this](const auto& variant_value) {
-                using VT = std::decay_t<decltype(variant_value)>;
-                if constexpr (std::is_same_v<VT, std::string>) {
-                    m_statement.bind(Index, variant_value);
-                } else if constexpr (std::is_same_v<VT, int64_t>) {
-                    m_statement.bind(Index, variant_value);
-                } else if constexpr (std::is_same_v<VT, uint64_t>) {
-                    m_statement.bind(Index, static_cast<int64_t>(variant_value));
-                } else if constexpr (std::is_same_v<VT, double>) {
-                    m_statement.bind(Index, variant_value);
-                } else if constexpr (std::is_same_v<VT, bool>) {
-                    m_statement.bind(Index, variant_value ? 1 : 0);
-                } else if constexpr (std::is_same_v<VT, std::monostate>) {
-                    m_statement.bind(Index); // Bind NULL
-                }
-            }, value);
+        } else if constexpr (std::is_same_v<DecayedT, std::optional<typename DecayedT::value_type>>) {
+            // Handle std::optional types
+            if (value.has_value()) {
+                bind_single_parameter<Index>(value.value());
+            } else {
+                m_statement.bind(Index); // Bind NULL
+            }
         } else {
             static_assert(sizeof(T) == 0, "Unsupported parameter type for bind_parameters");
         }
@@ -144,26 +136,17 @@ private:
             m_statement.bind(index, static_cast<double>(value));
         } else if constexpr (std::is_same_v<DecayedT, bool>) {
             m_statement.bind(index, value ? 1 : 0);
+        } else if constexpr (std::is_enum_v<DecayedT>) {
+            m_statement.bind(index, static_cast<int64_t>(value));
         } else if constexpr (std::is_same_v<DecayedT, std::monostate>) {
             m_statement.bind(index); // Bind NULL
-        } else if constexpr (std::is_same_v<DecayedT, QueryValue>) {
-            // Handle QueryValue variant directly
-            std::visit([this, index](const auto& variant_value) {
-                using VT = std::decay_t<decltype(variant_value)>;
-                if constexpr (std::is_same_v<VT, std::string>) {
-                    m_statement.bind(index, variant_value);
-                } else if constexpr (std::is_same_v<VT, int64_t>) {
-                    m_statement.bind(index, variant_value);
-                } else if constexpr (std::is_same_v<VT, uint64_t>) {
-                    m_statement.bind(index, static_cast<int64_t>(variant_value));
-                } else if constexpr (std::is_same_v<VT, double>) {
-                    m_statement.bind(index, variant_value);
-                } else if constexpr (std::is_same_v<VT, bool>) {
-                    m_statement.bind(index, variant_value ? 1 : 0);
-                } else if constexpr (std::is_same_v<VT, std::monostate>) {
-                    m_statement.bind(index); // Bind NULL
-                }
-            }, value);
+        } else if constexpr (std::is_same_v<DecayedT, std::optional<typename DecayedT::value_type>>) {
+            // Handle std::optional types
+            if (value.has_value()) {
+                bind_single_parameter_dynamic(index, value.value());
+            } else {
+                m_statement.bind(index); // Bind NULL
+            }
         } else {
             static_assert(sizeof(T) == 0, "Unsupported parameter type for bind_parameters");
         }
@@ -180,8 +163,27 @@ public:
     explicit Insert(std::shared_ptr<DAO> dao)
         : BaseOperation<DAO>(QueryBuilder::insert(dao->name(), dao->metadata().column_names), std::move(dao))
     {}
-    
+
     // Execute single entity insert - reuses precompiled statement
+    void operator()(const typename DAO::entity_type& entity) {
+        auto values_tuple = BaseOperation<DAO>::m_dao->metadata().extract_values_as_tuple(entity);
+        BaseOperation<DAO>::bind_parameters_from_tuple(values_tuple);
+        BaseOperation<DAO>::m_statement.exec();
+    }
+};
+
+/**
+ * InsertOrReplace operation - compiles INSERT OR REPLACE statement in constructor
+ */
+template<typename DAO>
+class InsertOrReplace : public BaseOperation<DAO> {
+
+public:
+    explicit InsertOrReplace(std::shared_ptr<DAO> dao)
+        : BaseOperation<DAO>(QueryBuilder::insert_or_replace(dao->name(), dao->metadata().column_names), std::move(dao))
+    {}
+
+    // Execute single entity insert or replace - reuses precompiled statement
     void operator()(const typename DAO::entity_type& entity) {
         auto values_tuple = BaseOperation<DAO>::m_dao->metadata().extract_values_as_tuple(entity);
         BaseOperation<DAO>::bind_parameters_from_tuple(values_tuple);
@@ -197,11 +199,6 @@ class Query : public BaseOperation<DAO> {
     size_t m_required_param_count;
     
 public:
-    // Constructor for SELECT * FROM table
-    // explicit Query(std::shared_ptr<DAO> dao)
-    //     : BaseOperation<DAO>(QueryBuilder::select_all(dao->name()), std::move(dao))
-    //     , m_required_param_count(0) {}
-    //
     // Constructor for SELECT * FROM table WHERE condition
     Query(std::shared_ptr<DAO> dao, const QueryCondition& condition = {})
         : BaseOperation<DAO>(QueryBuilder::select_where(dao->name(), condition.sql()), std::move(dao))
@@ -209,7 +206,7 @@ public:
     
     // Execute query - accepts variable arguments pack
     template<typename... Args>
-    std::vector<typename DAO::entity_type> operator()(Args&&... args) {
+    std::deque<typename DAO::entity_type> operator()(Args&&... args) {
         if (sizeof...(args) != m_required_param_count) {
             throw std::logic_error("Query requires exactly " + std::to_string(m_required_param_count) + " parameters, got " + std::to_string(sizeof...(args)));
         }
@@ -218,8 +215,8 @@ public:
     
 private:
     template<typename... Args>
-    std::vector<typename DAO::entity_type> execute_query(Args&&... args) {
-        std::vector<typename DAO::entity_type> results;
+    std::deque<typename DAO::entity_type> execute_query(Args&&... args) {
+        std::deque<typename DAO::entity_type> results;
         BaseOperation<DAO>::bind_parameters(std::forward<Args>(args)...);
         
         while (BaseOperation<DAO>::m_statement.executeStep()) {
@@ -228,33 +225,48 @@ private:
         
         return results;
     }
-    
+
+    //TODO: This uses wrong bahavior: It gets DB statement and extract types from it.
+    // Instead it should get metadata and extract its types
     typename DAO::entity_type create_entity_from_statement() {
-        std::vector<QueryValue> values;
-        
-        for (int i = 0; i < BaseOperation<DAO>::m_statement.getColumnCount(); ++i) {
-            SQLite::Column column = BaseOperation<DAO>::m_statement.getColumn(i);
-            
-            switch (column.getType()) {
-                case SQLITE_INTEGER:
-                    values.emplace_back(column.getInt64());
-                    break;
-                case SQLITE_FLOAT:
-                    values.emplace_back(column.getDouble());
-                    break;
-                case SQLITE_TEXT:
-                    values.emplace_back(column.getString());
-                    break;
-                case SQLITE_NULL:
-                    values.emplace_back(std::monostate{});
-                    break;
-                default:
-                    values.emplace_back(std::string{});
-                    break;
+        // Use a generic approach to create a tuple from database columns
+        // We'll create a generic tuple and let the metadata handle the conversion
+        auto create_tuple_from_columns = [&]() {
+            int column_count = BaseOperation<DAO>::m_statement.getColumnCount();
+
+            // Create a vector to hold generic values, then convert to tuple in metadata
+            std::vector<std::variant<std::string, int64_t, double, bool, std::monostate>> generic_values;
+            generic_values.reserve(column_count);
+
+            for (int i = 0; i < column_count; ++i) {
+                SQLite::Column column = BaseOperation<DAO>::m_statement.getColumn(i);
+
+                switch (column.getType()) {
+                    case SQLITE_INTEGER:
+                        generic_values.emplace_back(column.getInt64());
+                        break;
+                    case SQLITE_FLOAT:
+                        generic_values.emplace_back(column.getDouble());
+                        break;
+                    case SQLITE_TEXT:
+                        generic_values.emplace_back(column.getString());
+                        break;
+                    case SQLITE_NULL:
+                        generic_values.emplace_back(std::monostate{});
+                        break;
+                    default:
+                        generic_values.emplace_back(std::string{});
+                        break;
+                }
             }
-        }
-        
-        return BaseOperation<DAO>::m_dao->metadata().create_entity(values);
+
+            return generic_values;
+        };
+
+        auto values = create_tuple_from_columns();
+
+        // Convert the generic values to a proper tuple using the metadata
+        return BaseOperation<DAO>::m_dao->metadata().create_entity_from_generic_values(values);
     }
 };
 
@@ -303,22 +315,35 @@ public:
     
     // Execute update using primary key from entity
     void operator()(const typename DAO::entity_type& entity) {
-        auto all_values = m_dao->metadata().extract_values(entity);
-        
+        auto all_values = m_dao->metadata().extract_values_as_tuple(entity);
+
         // Reset statement before binding
         BaseOperation<DAO>::m_statement.reset();
-        
+
+        // Use tuple_size to get the number of elements
+        constexpr auto tuple_size = std::tuple_size_v<decltype(all_values)>;
+
         // Bind non-primary key values first
         int param_index = 1;
-        for (size_t i = 0; i < all_values.size(); ++i) {
-            if (i != m_dao->metadata().primary_key_index) {
-                BaseOperation<DAO>::bind_parameter(param_index++, all_values[i]);
-            }
-        }
-        
-        // Bind primary key value for WHERE clause
-        BaseOperation<DAO>::bind_parameter(param_index, all_values[m_dao->metadata().primary_key_index]);
-        
+        [&]<std::size_t... I>(std::index_sequence<I...>) {
+            auto bind_if_not_pk = [&]<std::size_t Idx>() mutable {
+                if (Idx != m_dao->metadata().primary_key_index) {
+                    BaseOperation<DAO>::bind_parameter(param_index++, std::get<Idx>(all_values));
+                }
+            };
+            (bind_if_not_pk.template operator()<I>(), ...);
+        }(std::make_index_sequence<tuple_size>{});
+
+        // Bind primary key value for WHERE clause using tuple access
+        [&]<std::size_t... I>(std::index_sequence<I...>) {
+            auto bind_pk = [&]<std::size_t Idx>() {
+                if (Idx == m_dao->metadata().primary_key_index) {
+                    BaseOperation<DAO>::bind_parameter(param_index, std::get<Idx>(all_values));
+                }
+            };
+            (bind_pk.template operator()<I>(), ...);
+        }(std::make_index_sequence<tuple_size>{});
+
         BaseOperation<DAO>::m_statement.exec();
     }
 };

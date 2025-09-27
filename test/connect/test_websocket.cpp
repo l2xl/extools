@@ -37,28 +37,28 @@ TEST_CASE("websock_connection subscribe to ByBit public trades", "[connect][webs
     std::promise<std::string> response_promise;
     auto response_future = response_promise.get_future();
     
-    // Create response handler
-    auto handler = [&response_promise](std::exception_ptr e, std::string message) {
-        if (e) response_promise.set_exception(e);
-        else
-        {
-            std::cout << "Received WebSocket message: " << message << std::endl;
-            response_promise.set_value(message);
-        }
+    // Create response handlers
+    auto data_handler = [&response_promise](std::string message) {
+        std::cout << "Received WebSocket message: " << message << std::endl;
+        response_promise.set_value(message);
     };
-    
+
+    auto error_handler = [&response_promise](std::exception_ptr e) {
+        response_promise.set_exception(e);
+    };
+
     // Create WebSocket connection to ByBit public stream
-    auto connection = websock_connection::create(context, "wss://stream.bybit.com/v5/public/spot", handler);
+    auto connection = websock_connection::create(context, "wss://stream.bybit.com/v5/public/spot", data_handler, error_handler);
 
     // Subscribe to BTCUSDT public trades
     // ByBit WebSocket subscription message format
     std::string subscription_message = R"({"op":"subscribe","args":["publicTrade.BTCUSDT"]})";
-    
+
     // Setup subscription
     REQUIRE_NOTHROW((*connection)(subscription_message));
     
     // Wait for first message with timeout
-    auto status = response_future.wait_for(std::chrono::seconds(5));
+    auto status = response_future.wait_for(std::chrono::seconds(25));
     REQUIRE(status == std::future_status::ready);
 
     // Get the response

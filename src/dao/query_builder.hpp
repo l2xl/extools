@@ -21,10 +21,6 @@
 
 namespace scratcher::dao {
 
-/**
- * Represents a value that can be bound to a SQL parameter
- */
-using QueryValue = std::variant<std::monostate, std::string, int64_t, uint64_t, double, bool>;
 
 /**
  * Query condition operators
@@ -159,6 +155,7 @@ public:
     
     // INSERT queries
     static std::string insert(const std::string& table_name, const std::vector<std::string>& columns);
+    static std::string insert_or_replace(const std::string& table_name, const std::vector<std::string>& columns);
     static std::string insert_batch(const std::string& table_name, const std::vector<std::string>& columns, size_t batch_size);
     
     // UPDATE queries

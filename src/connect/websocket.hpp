@@ -34,15 +34,16 @@ namespace scratcher::connect {
 
 /**
  * @brief WebSocketConnection implements persistent WebSocket subscriptions
- * 
+ *
  * This connection type is designed for persistent subscriptions where:
  * - Single connection instance is shared between multiple DataSinks
  * - Connection opens after first create() call
  * - Each operator() call sends a subscription message
  * - Connection remains open and distributes data to the handler
- * 
- * Handler callback type:
+ *
+ * Handler callback types:
  * - std::function<void(std::string)> - receives JSON messages
+ * - std::function<void(std::exception_ptr)> - receives errors
  */
 class websock_connection : public std::enable_shared_from_this<websock_connection>
 {
@@ -52,7 +53,8 @@ class websock_connection : public std::enable_shared_from_this<websock_connectio
 
     std::atomic<status> m_status = status::INIT;
     std::weak_ptr<context> m_context;
-    std::function<void(std::exception_ptr e, std::string message)> m_handler;
+    std::function<void(std::string)> m_data_handler;
+    std::function<void(std::exception_ptr)> m_error_handler;
     boost::asio::strand<websocket_stream::executor_type> m_strand;
 
     std::function<void(std::exception_ptr)> m_common_handler;
@@ -76,17 +78,44 @@ class websock_connection : public std::enable_shared_from_this<websock_connectio
     static boost::asio::awaitable<std::string> co_read(std::weak_ptr<websock_connection>);
     static boost::asio::awaitable<void> co_message(std::shared_ptr<websock_connection>, std::string message);
     
-    struct EnsurePrivate {};
+    struct ensure_private {};
 public:
-    explicit websock_connection(std::shared_ptr<context> context, const std::string& url, std::function<void(std::exception_ptr e, std::string message)> handler, EnsurePrivate);
+    explicit websock_connection(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler, ensure_private);
 
     /**
      * @brief Create WebSocketConnection instance
      * @param context Shared connection context with host resolution
      * @param url Full URL to request (e.g., "wss://api.bybit.com/v5/public/spot")
-     * @param handler Data handler that receives JSON messages
+     * @param data_handler Handler that receives JSON messages
+     * @param error_handler Handler that receives errors
      */
-    static std::shared_ptr<websock_connection> create(std::shared_ptr<context> context, const std::string& url, std::function<void(std::exception_ptr e, std::string message)> handler);
+    static std::shared_ptr<websock_connection> create(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler);
+
+    /**
+     * @brief Create WebSocketConnection instance with generic callable handlers
+     * @tparam DataAcceptor Callable accepting std::string (e.g., data_dispatcher, data_adapter, lambda)
+     * @tparam ErrorHandler Callable accepting std::exception_ptr
+     * @param context Shared connection context with host resolution
+     * @param url Full URL to request (e.g., "wss://api.bybit.com/v5/public/spot")
+     * @param data_handler Handler that receives JSON messages (data_dispatcher, data_adapter, etc.)
+     * @param error_handler Handler that receives errors
+     */
+    template<typename DataAcceptor, typename ErrorHandler>
+    static std::shared_ptr<websock_connection> create(std::shared_ptr<context> context, const std::string& url, DataAcceptor&& data_handler, ErrorHandler&& error_handler)
+    {
+        // Wrap callables in std::function for type erasure
+        std::function<void(std::string)> wrapped_data_handler =
+            [handler = std::forward<DataAcceptor>(data_handler)](std::string data) mutable {
+                handler(std::move(data));
+            };
+
+        std::function<void(std::exception_ptr)> wrapped_error_handler =
+            [handler = std::forward<ErrorHandler>(error_handler)](std::exception_ptr e) mutable {
+                handler(e);
+            };
+
+        return create(std::move(context), url, std::move(wrapped_data_handler), std::move(wrapped_error_handler));
+    }
 
     void set_heartbeat(std::chrono::seconds seconds, std::function<std::string(size_t number)>);
     /**

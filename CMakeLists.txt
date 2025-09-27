@@ -41,7 +41,7 @@ find_package(Qt6 6 CONFIG REQUIRED COMPONENTS Core Widgets Svg)
 
 find_package(OpenSSL REQUIRED)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unqualified-std-cast-call -pthread")
 
 find_package(Boost 1.83 REQUIRED COMPONENTS context system url)
 
@@ -102,7 +102,7 @@ set(core_SOURCES
         src/data/bybit/data_manager.hpp
         src/data/bybit/error.hpp
         src/data/bybit/subscription.hpp
-        src/dao/dao.hpp
+        src/dao/data_model.hpp
         src/dao/operations.hpp
         src/dao/query_builder.hpp
         src/dao/query_builder.cpp
@@ -113,6 +113,8 @@ set(core_SOURCES
         src/connect/http_query.cpp
         src/connect/websocket.hpp
         src/connect/websocket.cpp
+        src/datahub/sync_policy.hpp
+        src/datahub/data_sink.hpp
 )
 
 add_library(core STATIC ${core_SOURCES})
@@ -191,6 +193,7 @@ if(NOT ANDROID)
     add_test(test_dao test/dao/test_dao.cpp)
     add_test(test_http_query test/connect/test_http_query.cpp)
     add_test(test_websocket test/connect/test_websocket.cpp)
+    add_test(test_data_sink test/datahub/test_data_sink.cpp)
 
 endif()
 

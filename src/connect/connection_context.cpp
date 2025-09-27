@@ -22,12 +22,14 @@ using boost::asio::use_awaitable;
 
 std::shared_ptr<context> context::create(std::shared_ptr<AsioScheduler> scheduler, std::chrono::milliseconds timeout)
 {
-    return std::make_shared<context>( scheduler, timeout, EnsurePrivate{});
+    return std::make_shared<context>( scheduler, timeout, ensure_private{});
 }
 
 boost::asio::awaitable<boost::asio::ip::tcp::resolver::results_type>
 context::co_resolve(std::shared_ptr<context> self, std::string host, std::string port)
 {
+    co_await boost::asio::post(self->m_resolution_strand, use_awaitable);
+
     // All operations run on the strand, so no synchronization needed
     const auto key = host + ":" + port;
 

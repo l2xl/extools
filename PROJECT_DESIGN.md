@@ -170,6 +170,57 @@ co_await dao_factory.with_transaction([&](auto& tx) -> boost::asio::awaitable<vo
 - Use CMake with Ninja for builds
 - Leverage existing build cache in cmake-build-debug-gcc-14/
 
+### Coroutine Safety Pattern
+**Mandatory Pattern for Async Methods**: All coroutine methods must follow the static method pattern with shared_ptr parameters to ensure object lifetime safety.
+
+**Pattern Requirements**:
+```cpp
+class MyClass : public std::enable_shared_from_this<MyClass> {
+public:
+    // ✅ CORRECT: Static coroutine with shared_ptr parameter
+    static boost::asio::awaitable<ResultType> co_async_operation(
+        std::shared_ptr<MyClass> self,
+        ParameterType param);
+
+    // ❌ WRONG: Non-static coroutine - object can be destroyed during suspension
+    boost::asio::awaitable<ResultType> co_async_operation(ParameterType param);
+};
+```
+
+**Rationale**:
+- **Object Lifetime Safety**: The `shared_ptr` parameter ensures the object remains alive for the entire coroutine duration
+- **No `this` Pointer Risks**: Eliminates risk of accessing destroyed object members through `this` during coroutine suspension points
+- **Clear Ownership Semantics**: The coroutine explicitly holds a reference to the required object
+- **Thread Safety**: Works seamlessly with strand-based thread safety patterns
+
+**Usage Pattern**:
+```cpp
+// In the calling code:
+co_await MyClass::co_async_operation(shared_from_this(), parameters);
+
+// In the coroutine implementation:
+static boost::asio::awaitable<ResultType> MyClass::co_async_operation(
+    std::shared_ptr<MyClass> self, ParameterType param)
+{
+    // Optional: Enforce strand execution for thread safety
+    co_await boost::asio::post(self->m_strand, boost::asio::use_awaitable);
+
+    // Safe to access self-> members - object lifetime guaranteed
+    co_await some_async_operation();
+    self->member_variable = result;
+    co_return result;
+}
+```
+
+**When to Use**:
+- All coroutine methods that access class members
+- Any async operation that might outlive the object's normal scope
+- Methods that require strand-based thread safety
+
+**Examples in Codebase**:
+- `context::co_resolve()` in `src/connect/connection_context.cpp`
+- `http_query::co_request()` in `src/connect/http_query.cpp`
+
 ## Development Workflow
 
 ### DAO Layer Implementation Plan
@@ -244,13 +295,13 @@ Exchange Scratcher is a general-purpose standalone exchange client created by en
 ## Build & Installation
 ```bash
 # Configure with CMake using Ninja
-cmake -B cmake-build-debug-gcc-14 -G Ninja
+cmake -B cmake-build-debug-clang-19 -G Ninja
 
 # Build the project
-cmake --build cmake-build-debug-gcc-14
+cmake --build cmake-build-debug-clang-19
 
 # Install (optional)
-cmake --install cmake-build-debug-gcc-14
+cmake --install cmake-build-debug-clang-19
 ```
 
 ## Testing
@@ -258,13 +309,6 @@ cmake --install cmake-build-debug-gcc-14
 **Test Location**: test/ directory with subdirectories matching source structure
 **Naming Convention**: test_*.cpp
 **Configuration**: Tests configured in CMakeLists.txt using add_test function
-**Run Command**:
-```bash
-# Run a specific test
-./cmake-build-debug-gcc-14/test_currency
-./cmake-build-debug-gcc-14/test_buoy_candle
-./cmake-build-debug-gcc-14/test_instrument
-```
 
 ## Application Structure
 **Entry Point**: src/main.cpp
