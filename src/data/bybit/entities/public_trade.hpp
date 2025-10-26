@@ -15,23 +15,26 @@
 #define BYBIT_PUBLIC_TRADE_HPP
 
 #include <string>
+#include <optional>
+#include <glaze/glaze.hpp>
 #include "enums.hpp"
 
 namespace scratcher::bybit {
 
 struct PublicTrade {
-    std::string exec_id;                // Execution ID
+    std::string execId;                // Execution ID
     std::string symbol;                 // Symbol name
     std::string price;                  // Execution price (string to preserve precision)
     std::string size;                   // Execution size (string to preserve precision)
     OrderSide side;                     // Trade side (Buy/Sell)
-    uint64_t time{0};                   // Execution timestamp (ms)
-    bool is_block_trade{false};         // Whether it's a block trade
-    bool is_rpi_trade{false};           // Whether it's RPI trade
-    std::string m_p;                    // Mark price (for options)
-    std::string i_p;                    // Index price (for options)
-    std::string m_iv;                   // Mark IV (for options)
-    std::string iv;                     // IV (for options)
+    std::string time;                   // Execution timestamp (ms) - JSON sends as string
+    bool isBlockTrade{false};         // Whether it's a block trade
+    bool isRPITrade{false};           // Whether it's RPI trade
+    std::string seq;                    // Sequence number
+    std::optional<std::string> mP;     // Mark price (for options)
+    std::optional<std::string> iP;     // Index price (for options)
+    std::optional<std::string> mIv;    // Mark IV (for options)
+    std::optional<std::string> iv;      // IV (for options)
 };
 
 } // namespace scratcher::bybit

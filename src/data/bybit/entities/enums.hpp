@@ -14,6 +14,8 @@
 #ifndef BYBIT_ENUMS_HPP
 #define BYBIT_ENUMS_HPP
 
+#include <glaze/glaze.hpp>
+
 namespace scratcher::bybit {
 
 enum class InstrumentStatus {
@@ -47,5 +49,51 @@ enum class OrderSide {
 };
 
 } // namespace scratcher::bybit
+
+template <>
+struct glz::meta<scratcher::bybit::Category> {
+    using enum scratcher::bybit::Category;
+    static constexpr auto value = enumerate(
+        "spot", Spot,
+        "linear", Linear,
+        "inverse", Inverse,
+        "option", Option
+    );
+};
+
+template <>
+struct glz::meta<scratcher::bybit::OrderSide> {
+    using enum scratcher::bybit::OrderSide;
+    static constexpr auto value = enumerate(
+        "Buy", Buy,
+        "Sell", Sell
+    );
+};
+
+template <>
+struct glz::meta<scratcher::bybit::InstrumentStatus> {
+    using enum scratcher::bybit::InstrumentStatus;
+    static constexpr auto value = enumerate(
+        "PreLaunch", PreLaunch,
+        "Trading", Trading,
+        "Settling", Settling,
+        "Delivering", Delivering,
+        "Closed", Closed
+    );
+};
+
+template <>
+struct glz::meta<scratcher::bybit::ExecType> {
+    using enum scratcher::bybit::ExecType;
+    static constexpr auto value = enumerate(
+        "Trade", Trade,
+        "AdlTrade", AdlTrade,
+        "Funding", Funding,
+        "BustTrade", BustTrade,
+        "Settle", Settle,
+        "BlockTrade", BlockTrade,
+        "MovePosition", MovePosition
+    );
+};
 
 #endif // BYBIT_ENUMS_HPP

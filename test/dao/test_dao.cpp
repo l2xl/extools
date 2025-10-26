@@ -36,37 +36,38 @@ public:
     std::shared_ptr<SQLite::Database> db;
 };
 
-TEST_CASE("data_model<FeeRate> - Create and verify empty database", "[dao][fee_rate]") {
+TEST_CASE("Empty database", "[dao]") {
     TestDatabase test_db;
     
-    // Create DAO with symbol as primary key - table created automatically in constructor
-    auto dao = data_model<FeeRate, &FeeRate::symbol>::create(test_db.db);
-    
-    // Query empty database - should return no records
-    auto all_records = dao->query();
-    CHECK(all_records.empty());
-    
-    // Count should be 0
-    auto count = dao->count();
-    CHECK(count == 0);
+    SECTION("Feerate") {
+        // Create DAO with symbol as primary key - table created automatically in constructor
+        auto dao = data_model<FeeRate, &FeeRate::symbol>::create(test_db.db);
+
+        // Query empty database - should return no records
+        auto all_records = dao->query();
+        CHECK(all_records.empty());
+
+        // Count should be 0
+        auto count = dao->count();
+        CHECK(count == 0);
+    }
+
+    SECTION("PublicTrade")
+    {
+        // Create DAO with symbol as primary key - table created automatically in constructor
+        auto dao = data_model<PublicTrade, &PublicTrade::execId>::create(test_db.db);
+
+        // Query empty database - should return no records
+        auto all_records = dao->query();
+        CHECK(all_records.empty());
+
+        // Count should be 0
+        auto count = dao->count();
+        CHECK(count == 0);
+    }
 }
 
-TEST_CASE("data_model<PublicTrade> - Create and verify empty database", "[dao][public_trade]") {
-    TestDatabase test_db;
-
-    // Create DAO with symbol as primary key - table created automatically in constructor
-    auto dao = data_model<PublicTrade, &PublicTrade::exec_id>::create(test_db.db);
-
-    // Query empty database - should return no records
-    auto all_records = dao->query();
-    CHECK(all_records.empty());
-
-    // Count should be 0
-    auto count = dao->count();
-    CHECK(count == 0);
-}
-
-TEST_CASE("data_model<FeeRate> - Insert and query record from ByBit JSON", "[dao][fee_rate]") {
+TEST_CASE("Insert", "[dao][fee_rate]") {
     TestDatabase test_db;
     
     // Create DAO with symbol as primary key - table created automatically in constructor
@@ -109,7 +110,7 @@ TEST_CASE("data_model<FeeRate> - Insert and query record from ByBit JSON", "[dao
     CHECK_FALSE(retrieved_record.baseCoin.has_value());
 }
 
-TEST_CASE("data_model<FeeRate> - Query using every method", "[dao][fee_rate]") {
+TEST_CASE("Query methods", "[dao][fee_rate]") {
     TestDatabase test_db;
     
     // Create DAO with symbol as primary key - table created automatically in constructor
@@ -214,7 +215,7 @@ TEST_CASE("data_model<FeeRate> - Query using every method", "[dao][fee_rate]") {
     }
 }
 
-TEST_CASE("data_model<FeeRate> - ByBit API response with baseCoin", "[dao][fee_rate]") {
+TEST_CASE("Optional fields", "[dao][fee_rate]") {
     TestDatabase test_db;
     
     // Create DAO with symbol as primary key - table created automatically in constructor
@@ -252,7 +253,7 @@ TEST_CASE("data_model<FeeRate> - ByBit API response with baseCoin", "[dao][fee_r
     CHECK(retrieved.baseCoin.value() == "BTC");
 }
 
-TEST_CASE("data_model<FeeRate> - Batch insert", "[dao][fee_rate]") {
+TEST_CASE("Batch insert", "[dao][fee_rate]") {
     TestDatabase test_db;
     
     // Create DAO with symbol as primary key - table created automatically in constructor
@@ -293,7 +294,7 @@ TEST_CASE("data_model<FeeRate> - Batch insert", "[dao][fee_rate]") {
     CHECK(total_count == 3);
 }
 
-// TEST_CASE("data_model<FeeRate> - Transaction operations", "[dao][fee_rate][transaction]") {
+// TEST_CASE("Transaction", "[dao][fee_rate][transaction]") {
 //     TestDatabase test_db;
 //
 //     // Create DAO with symbol as primary key - table created automatically in constructor
@@ -362,7 +363,7 @@ TEST_CASE("data_model<FeeRate> - Batch insert", "[dao][fee_rate]") {
 //     }
 // }
 
-TEST_CASE("data_model<FeeRate> - Direct operation usage", "[dao][fee_rate][operations]") {
+TEST_CASE("Direct operations", "[dao][fee_rate][operations]") {
     TestDatabase test_db;
     
     // Create DAO with symbol as primary key - table created automatically in constructor

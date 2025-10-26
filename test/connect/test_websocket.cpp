@@ -25,7 +25,7 @@
 using namespace scratcher;
 using namespace scratcher::connect;
 
-TEST_CASE("websock_connection subscribe to ByBit public trades", "[connect][websocket][bybit]")
+TEST_CASE("subscribepublic trades", "[connect][websocket]")
 {
     // Create scheduler
     auto scheduler = AsioScheduler::Create(1);

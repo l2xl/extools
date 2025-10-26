@@ -43,14 +43,14 @@ struct DataSinkTestFixture {
 // Global fixture instance that persists between tests
 static DataSinkTestFixture fixture;
 
-TEST_CASE("data_sink first run creates DB table and receives server data", "[datahub][bybit][public_trades][first_run]")
+TEST_CASE("data_sink - First run", "[datahub][bybit][public_trades][first_run]")
 {
     std::atomic<bool> data_received{false};
     std::atomic<int> callback_count{0};
     std::promise<void> completion_promise;
     auto completion_future = completion_promise.get_future();
 
-    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::exec_id, policy::query_on_init<bybit::PublicTrade>>
+    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::execId, policy::query_on_init<bybit::PublicTrade>>
         (
             fixture.db,
             [&](std::deque<bybit::PublicTrade>&& trades, DataSource source){
@@ -107,7 +107,7 @@ TEST_CASE("data_sink first run creates DB table and receives server data", "[dat
     REQUIRE(callback_count.load() == 1);
 }
 
-TEST_CASE("data_sink second run loads DB data first then receives server data", "[datahub][bybit][public_trades][second_run]")
+TEST_CASE("data_sink - Second run with cache", "[datahub][bybit][public_trades][second_run]")
 {
     std::atomic<int> callback_count{0};
     std::vector<std::pair<int, size_t>> callback_sequence; // callback_number, trades_count
@@ -115,7 +115,7 @@ TEST_CASE("data_sink second run loads DB data first then receives server data", 
     std::promise<void> completion_promise;
     auto completion_future = completion_promise.get_future();
 
-    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::exec_id, policy::query_on_init<bybit::PublicTrade>>
+    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::execId, policy::query_on_init<bybit::PublicTrade>>
         (
             fixture.db,
             [&](std::deque<bybit::PublicTrade>&& trades, DataSource source){
