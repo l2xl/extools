@@ -173,21 +173,31 @@ public:
 };
 
 /**
- * InsertOrReplace operation - compiles INSERT OR REPLACE statement in constructor
+ * InsertOrReplace operation - compiles INSERT ON CONFLICT DO UPDATE WHERE statement in constructor
+ * Returns true if data was inserted or updated, false if data was unchanged
  */
 template<typename DAO>
 class InsertOrReplace : public BaseOperation<DAO> {
 
 public:
     explicit InsertOrReplace(std::shared_ptr<DAO> dao)
-        : BaseOperation<DAO>(QueryBuilder::insert_or_replace(dao->name(), dao->metadata().column_names), std::move(dao))
+        : BaseOperation<DAO>(QueryBuilder::insert_or_replace(dao->name(), dao->metadata().column_names, dao->metadata().primary_key_name, dao->metadata().primary_key_index), std::move(dao))
     {}
 
     // Execute single entity insert or replace - reuses precompiled statement
-    void operator()(const typename DAO::entity_type& entity) {
+    // Returns true if data was modified (inserted or updated), false if unchanged
+    bool operator()(const typename DAO::entity_type& entity) {
         auto values_tuple = BaseOperation<DAO>::m_dao->metadata().extract_values_as_tuple(entity);
         BaseOperation<DAO>::bind_parameters_from_tuple(values_tuple);
         BaseOperation<DAO>::m_statement.exec();
+
+        // Get the number of rows modified (0 if WHERE clause prevented update)
+        sqlite3* db_handle = const_cast<SQLite::Database&>(BaseOperation<DAO>::m_dao->database()).getHandle();
+        int changes = sqlite3_changes(db_handle);
+
+        // changes > 0 means either INSERT (1) or UPDATE (1) happened
+        // changes == 0 means WHERE clause prevented update (data unchanged)
+        return changes > 0;
     }
 };
 

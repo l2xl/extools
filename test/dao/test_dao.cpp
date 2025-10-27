@@ -363,12 +363,12 @@ TEST_CASE("Batch insert", "[dao][fee_rate]") {
 //     }
 // }
 
-TEST_CASE("Direct operations", "[dao][fee_rate][operations]") {
+TEST_CASE("InsertOrReplace with change detection", "[dao][fee_rate][insert_or_replace]") {
     TestDatabase test_db;
-    
+
     // Create DAO with symbol as primary key - table created automatically in constructor
     auto dao = data_model<FeeRate, &FeeRate::symbol>::create(test_db.db);
-    
+
     // Create test data
     FeeRate test_fee_rate{
         std::string{"ETHUSDT"},   // symbol (primary key)
@@ -376,12 +376,105 @@ TEST_CASE("Direct operations", "[dao][fee_rate][operations]") {
         "0.0006",                 // takerFeeRate
         "0.0001"                  // makerFeeRate
     };
-    
+
+    SECTION("First insert - should return true (data modified)") {
+        bool modified = dao->insert_or_replace(test_fee_rate);
+        CHECK(modified == true);
+
+        // Verify insertion
+        auto count = dao->count();
+        CHECK(count == 1);
+    }
+
+    SECTION("Second insert with same data - should return false (data unchanged)") {
+        // First insert
+        bool first_modified = dao->insert_or_replace(test_fee_rate);
+        CHECK(first_modified == true);
+
+        // Second insert with identical data
+        bool second_modified = dao->insert_or_replace(test_fee_rate);
+        CHECK(second_modified == false);
+
+        // Verify still only one record
+        auto count = dao->count();
+        CHECK(count == 1);
+    }
+
+    SECTION("Update with different data - should return true (data modified)") {
+        // First insert
+        bool first_modified = dao->insert_or_replace(test_fee_rate);
+        CHECK(first_modified == true);
+
+        // Modify the fee rate
+        test_fee_rate.takerFeeRate = "0.0007";
+        test_fee_rate.makerFeeRate = "0.0002";
+
+        // Insert/replace with modified data
+        bool second_modified = dao->insert_or_replace(test_fee_rate);
+        CHECK(second_modified == true);
+
+        // Verify still only one record but with updated values
+        auto count = dao->count();
+        CHECK(count == 1);
+
+        auto eth_condition = QueryCondition::where("symbol", QueryOperator::Equal);
+        auto records = dao->query(eth_condition, "ETHUSDT");
+        REQUIRE(records.size() == 1);
+        CHECK(records[0].takerFeeRate == "0.0007");
+        CHECK(records[0].makerFeeRate == "0.0002");
+    }
+
+    SECTION("Multiple identical inserts - only first should modify") {
+        bool modified1 = dao->insert_or_replace(test_fee_rate);
+        CHECK(modified1 == true);
+
+        bool modified2 = dao->insert_or_replace(test_fee_rate);
+        CHECK(modified2 == false);
+
+        bool modified3 = dao->insert_or_replace(test_fee_rate);
+        CHECK(modified3 == false);
+
+        // Verify still only one record
+        auto count = dao->count();
+        CHECK(count == 1);
+    }
+}
+
+TEST_CASE("Direct operations", "[dao][fee_rate][operations]") {
+    TestDatabase test_db;
+
+    // Create DAO with symbol as primary key - table created automatically in constructor
+    auto dao = data_model<FeeRate, &FeeRate::symbol>::create(test_db.db);
+
+    // Create test data
+    FeeRate test_fee_rate{
+        std::string{"ETHUSDT"},   // symbol (primary key)
+        std::nullopt,             // baseCoin
+        "0.0006",                 // takerFeeRate
+        "0.0001"                  // makerFeeRate
+    };
+
     SECTION("Direct Insert operation") {
         Insert insert_op(dao);
         insert_op(test_fee_rate);
-        
+
         // Verify insertion
+        auto all_records = dao->query();
+        CHECK(all_records.size() == 1);
+    }
+
+    SECTION("Direct InsertOrReplace operation") {
+        InsertOrReplace insert_or_replace_op(dao);
+
+        // First insert - should return true
+        bool first_modified = insert_or_replace_op(test_fee_rate);
+        CHECK(first_modified == true);
+
+        // Second insert with same data - should return false
+        bool second_modified = insert_or_replace_op(test_fee_rate);
+        CHECK(second_modified == false);
+
+        // Verify only one record
         auto all_records = dao->query();
         CHECK(all_records.size() == 1);
     }

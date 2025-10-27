@@ -45,13 +45,21 @@ public:
     {}
 
     bool operator()(const std::string& json_data) {
+        //std::clog << "Try JSON: " << json_data << std::endl;
         try {
-            if (auto result = glz::read_json<data_type>(json_data)) {
+            auto result = glz::read_json<data_type>(json_data);
+            if (result) {
                 m_handler(move(*result));
                 return true;
             }
+            // else {
+            //     const auto& err = result.error();
+            //     std::clog << "Failed to read json data for type '" << typeid(data_type).name() << "':\n"
+            //               << "  Error: " << glz::format_error(err, json_data) << std::endl;
+            // }
         }
         catch (...) {
+            std::cerr << "Unknown exception while parsing json for type '" << typeid(data_type).name() << "'" << std::endl;
             // Parsing failed, this acceptor cannot handle this data
         }
         return false;
@@ -198,23 +206,23 @@ public:
         std::weak_ptr<data_sink> ref = this->shared_from_this();
         return [=](Range&& entities) {
             if (auto self = ref.lock()) {
-                self->on_data_received(std::forward<Range>(entities), DataSource::SERVER);
+                self->process_new_entities(std::forward<Range>(entities), DataSource::SERVER);
             }
         };
     }
 
+private:
     template <std::ranges::input_range Range>
-    void on_data_received(Range&& entities, DataSource source = DataSource::SERVER)
+    void process_new_entities(Range&& entities, DataSource source = DataSource::SERVER)
     requires std::same_as<std::ranges::range_value_t<decltype(entities)>, Entity>
     {
         try {
             // Store in DAO using insert_or_replace
             std::deque<Entity> new_entities;
             for (const auto& entity: entities) {
-                m_dao->insert_or_replace(entity);
-                new_entities.push_back(entity);
+                if (m_dao->insert_or_replace(entity))
+                    new_entities.push_back(entity);
             }
-
 
             // Only notify callback if we have entities to report
             if (!new_entities.empty()) {
@@ -228,7 +236,6 @@ public:
         }
     }
 
-private:
     /**
      * @brief Load existing data from database and trigger callback with CACHE source
      */

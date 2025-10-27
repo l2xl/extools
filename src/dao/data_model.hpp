@@ -78,9 +78,9 @@ public:
         insert_op(entity);
     }
 
-    void insert_or_replace(const Entity &entity) {
+    bool insert_or_replace(const Entity &entity) {
         InsertOrReplace<data_model> insert_or_replace_op(this->shared_from_this());
-        insert_or_replace_op(entity);
+        return insert_or_replace_op(entity);
     }
 
     // Variadic template query method - primary interface for conditional queries

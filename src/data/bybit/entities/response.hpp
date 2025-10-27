@@ -21,6 +21,16 @@
 
 namespace scratcher::bybit {
 
+// WebSocket ByBit API market data payload structure
+// Example: {"topic":"publicTrade.BTCUSDC","ts":1761520812165,"type":"snapshot","data":[...]}
+template<typename T>
+struct WsApiPayload {
+    std::string topic;                 // Topic name (e.g., "publicTrade.BTCUSDC")
+    uint64_t ts{0};                    // Timestamp (ms) when system generates the data
+    std::string type;                  // Data type ("snapshot" or "delta")
+    std::deque<T> data;               // Array of data objects
+};
+
 struct RetExtInfo
 {
 

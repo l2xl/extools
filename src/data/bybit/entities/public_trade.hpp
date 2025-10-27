@@ -18,9 +18,13 @@
 #include <optional>
 #include <glaze/glaze.hpp>
 #include "enums.hpp"
+#include "glaze/core/common.hpp"
+#include "glaze/core/wrappers.hpp"
 
 namespace scratcher::bybit {
 
+// PublicTrade uses REST API field naming convention
+// This is the canonical representation used throughout the application
 struct PublicTrade {
     std::string execId;                // Execution ID
     std::string symbol;                 // Symbol name
@@ -37,6 +41,38 @@ struct PublicTrade {
     std::optional<std::string> iv;      // IV (for options)
 };
 
+// WsPublicTrade is a derived struct that acts as a name alias for WebSocket deserialization
+// It contains no additional fields - glz::meta provides the mapping from WebSocket field names
+// to the inherited PublicTrade field names
+struct WsPublicTrade : PublicTrade {
+};
+
 } // namespace scratcher::bybit
+
+// Glaze metadata for WsPublicTrade - maps WebSocket field names to PublicTrade members
+// WebSocket uses abbreviated field names: i, T, p, v, S, s, BT, RPI, seq
+// These are mapped to: execId, time, price, size, side, symbol, isBlockTrade, isRPITrade, seq
+// NOTE: WebSocket sends "T" (timestamp) and "seq" as numbers, but REST API sends them as strings
+// We use custom converters to handle this difference
+template <>
+struct glz::meta<scratcher::bybit::WsPublicTrade> {
+    using T = scratcher::bybit::WsPublicTrade;
+
+    static constexpr auto value = glz::object(
+        "i", &T::execId,           // Trade ID -> execId
+        "T", glz::number<&scratcher::bybit::WsPublicTrade::time>,  // Timestamp as number -> time as string
+        "p", &T::price,            // Price -> price
+        "v", &T::size,             // Volume -> size
+        "S", &T::side,             // Side -> side
+        "s", &T::symbol,           // Symbol -> symbol
+        "BT", &T::isBlockTrade,    // Block trade flag -> isBlockTrade
+        "RPI", &T::isRPITrade,     // RPI trade flag -> isRPITrade
+        "seq", glz::number<&scratcher::bybit::WsPublicTrade::seq>,  // Sequence as number -> seq as string
+        "mP", &T::mP,              // Mark price (optional)
+        "iP", &T::iP,              // Index price (optional)
+        "mIv", &T::mIv,            // Mark IV (optional)
+        "iv", &T::iv               // IV (optional)
+    );
+};
 
 #endif // BYBIT_PUBLIC_TRADE_HPP

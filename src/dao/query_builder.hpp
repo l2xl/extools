@@ -155,7 +155,7 @@ public:
     
     // INSERT queries
     static std::string insert(const std::string& table_name, const std::vector<std::string>& columns);
-    static std::string insert_or_replace(const std::string& table_name, const std::vector<std::string>& columns);
+    static std::string insert_or_replace(const std::string& table_name, const std::vector<std::string>& columns, const std::string& primary_key_name, size_t primary_key_index);
     static std::string insert_batch(const std::string& table_name, const std::vector<std::string>& columns, size_t batch_size);
     
     // UPDATE queries

@@ -29,9 +29,39 @@ std::string QueryBuilder::insert(const std::string& table_name, const std::vecto
            generate_placeholders(columns.size()) + ")";
 }
 
-std::string QueryBuilder::insert_or_replace(const std::string& table_name, const std::vector<std::string>& columns) {
-    return "INSERT OR REPLACE INTO " + table_name + " (" + join_columns(columns) + ") VALUES (" +
-           generate_placeholders(columns.size()) + ")";
+std::string QueryBuilder::insert_or_replace(const std::string& table_name, const std::vector<std::string>& columns, const std::string& primary_key_name, size_t primary_key_index) {
+    std::ostringstream sql;
+
+    // INSERT INTO table (cols...) VALUES (vals...)
+    sql << "INSERT INTO " << table_name << " (" << join_columns(columns) << ") VALUES ("
+        << generate_placeholders(columns.size()) << ")";
+
+    // ON CONFLICT(primary_key) DO UPDATE SET
+    sql << " ON CONFLICT(" << primary_key_name << ") DO UPDATE SET ";
+
+    // Build SET clause for all non-primary-key columns
+    bool first = true;
+    for (size_t i = 0; i < columns.size(); ++i) {
+        if (i != primary_key_index) {
+            if (!first) sql << ", ";
+            sql << columns[i] << " = excluded." << columns[i];
+            first = false;
+        }
+    }
+
+    // Add WHERE clause to detect if any column actually changed
+    sql << " WHERE ";
+    first = true;
+    for (size_t i = 0; i < columns.size(); ++i) {
+        if (i != primary_key_index) {
+            if (!first) sql << " OR ";
+            // Use IS NOT to handle NULL values correctly
+            sql << table_name << "." << columns[i] << " IS NOT excluded." << columns[i];
+            first = false;
+        }
+    }
+
+    return sql.str();
 }
 
 // std::string QueryBuilder::insert_batch(const std::string& table_name, const std::vector<std::string>& columns, size_t batch_size) {
