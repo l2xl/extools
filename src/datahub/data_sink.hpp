@@ -153,14 +153,13 @@ data_dispatcher<Acceptor...> make_data_dispatcher(const std::shared_ptr<AsioSche
  * - PrimaryKey: Pointer to member for primary key field
  * - Connection: Adapter that converts data and provides handler interface
  */
-template<typename Entity, auto PrimaryKey, typename SyncPolicy, typename DataCallable, typename ErrorCallable>
-class data_sink : public std::enable_shared_from_this<data_sink<Entity, PrimaryKey, SyncPolicy, DataCallable, ErrorCallable>>
+template<typename Entity, auto PrimaryKey, typename DataCallable, typename ErrorCallable>
+class data_sink : public std::enable_shared_from_this<data_sink<Entity, PrimaryKey, DataCallable, ErrorCallable>>
 {
 public:
     using entity_type = Entity;
     using data_handler_type = DataCallable;
     using error_handler_type = ErrorCallable;
-    using sync_policy_type = SyncPolicy;
 
 private:
     std::shared_ptr<dao::data_model<Entity, PrimaryKey>> m_dao;
@@ -201,7 +200,7 @@ public:
     }
 
     template <std::ranges::input_range Range>
-    requires std::same_as<std::ranges::range_value_t<Range>, Entity>
+    requires std::convertible_to<std::ranges::range_value_t<Range>, Entity>
     auto data_acceptor() {
         std::weak_ptr<data_sink> ref = this->shared_from_this();
         return [=](Range&& entities) {
@@ -214,14 +213,14 @@ public:
 private:
     template <std::ranges::input_range Range>
     void process_new_entities(Range&& entities, DataSource source = DataSource::SERVER)
-    requires std::same_as<std::ranges::range_value_t<decltype(entities)>, Entity>
+    requires std::convertible_to<std::ranges::range_value_t<decltype(entities)>, Entity>
     {
         try {
             // Store in DAO using insert_or_replace
             std::deque<Entity> new_entities;
             for (const auto& entity: entities) {
                 if (m_dao->insert_or_replace(entity))
-                    new_entities.push_back(entity);
+                    new_entities.emplace_back(static_cast<Entity>(entity));
             }
 
             // Only notify callback if we have entities to report
@@ -250,16 +249,13 @@ private:
             m_error_handler(std::current_exception());
         }
     }
-
-    friend SyncPolicy;
 };
 
-template<typename Entity, auto PrimaryKey, /*typename Connection, */typename SyncPolicy, typename DataCallable, typename ErrorCallable>
-std::shared_ptr<data_sink<Entity, PrimaryKey, /*Connection, */SyncPolicy, DataCallable, ErrorCallable>> make_data_sink(
+template<typename Entity, auto PrimaryKey, typename DataCallable, typename ErrorCallable>
+std::shared_ptr<data_sink<Entity, PrimaryKey, DataCallable, ErrorCallable>> make_data_sink(
     const std::shared_ptr<SQLite::Database>& db, DataCallable&& data_callback, ErrorCallable&& error_callback)
 {
-    return data_sink<Entity, PrimaryKey/*, Connection*/,
-                     SyncPolicy, DataCallable, ErrorCallable>::create(
+    return data_sink<Entity, PrimaryKey, DataCallable, ErrorCallable>::create(
                          db, std::forward<DataCallable>(data_callback), std::forward<ErrorCallable>(error_callback));
 }
 

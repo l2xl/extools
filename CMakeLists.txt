@@ -113,7 +113,6 @@ set(core_SOURCES
         src/connect/http_query.cpp
         src/connect/websocket.hpp
         src/connect/websocket.cpp
-        src/datahub/sync_policy.hpp
         src/datahub/data_sink.hpp
 )
 
@@ -194,6 +193,7 @@ if(NOT ANDROID)
     add_test(test_http_query test/connect/test_http_query.cpp)
     add_test(test_websocket test/connect/test_websocket.cpp)
     add_test(test_data_sink test/datahub/test_data_sink.cpp)
+    add_test(test_data_model test/bybit/test_data_model.cpp)
 
 endif()
 

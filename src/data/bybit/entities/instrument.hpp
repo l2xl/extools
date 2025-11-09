@@ -15,48 +15,95 @@
 #define BYBIT_INSTRUMENT_HPP
 
 #include <string>
+#include <glaze/glaze.hpp>
+
 #include "enums.hpp"
 
 namespace scratcher::bybit {
 
-// Helper structures for nested JSON objects
-struct PriceFilter {
-    std::string tickSize;               // Tick size for price
-    std::string minPrice;               // Minimum price (optional)
-    std::string maxPrice;               // Maximum price (optional)
-};
-
-struct LotSizeFilter {
-    std::string basePrecision;          // Base coin precision
-    std::string quotePrecision;         // Quote coin precision
-    std::string minOrderQty;            // Minimum order quantity
-    std::string maxOrderQty;            // Maximum order quantity
-    std::string minOrderAmt;            // Minimum order amount
-    std::string maxOrderAmt;            // Maximum order amount
-};
-
-struct RiskParameters
-{
-    std::string priceLimitRatioX;
-    std::string priceLimitRatioY;
-};
-
-
-// Raw instrument data from ByBit API
+// InstrumentInfo - canonical flattened representation for DAO storage
+// This is the single source of truth for instrument data storage
+// Uses C++23 auto-reflection for DAO - no glz::meta needed
 struct InstrumentInfo {
-    std::string symbol;                 // Symbol name
+    // Basic fields
+    std::string symbol;                 // Symbol name (primary key)
     std::string baseCoin;               // Base coin
     std::string quoteCoin;              // Quote coin
     std::string innovation;             // Innovation zone token ("0" or "1")
     InstrumentStatus status;            // Instrument status
     std::string marginTrading;          // Margin trading support ("utaOnly", etc.)
     std::string stTag;                  // Special treatment label ("0" or "1")
-    PriceFilter priceFilter;            // Price filter
-    LotSizeFilter lotSizeFilter;        // Lot size filter
-    RiskParameters riskParameters;
+
+    // Flattened priceFilter fields
+    std::string tickSize;               // Tick size for price
+    std::string minPrice;               // Minimum price
+    std::string maxPrice;               // Maximum price
+
+    // Flattened lotSizeFilter fields
+    std::string basePrecision;          // Base coin precision
+    std::string quotePrecision;         // Quote coin precision
+    std::string minOrderQty;            // Minimum order quantity
+    std::string maxOrderQty;            // Maximum order quantity
+    std::string minOrderAmt;            // Minimum order amount
+    std::string maxOrderAmt;            // Maximum order amount
+
+    // Flattened riskParameters fields
+    std::string priceLimitRatioX;       // Price limit ratio X
+    std::string priceLimitRatioY;       // Price limit ratio Y
 };
 
+// Helper structures for nested JSON deserialization
+// These match the ByBit API nested structure
+namespace detail {
+    struct PriceFilter {
+        std::string tickSize;
+        std::string minPrice;
+        std::string maxPrice;
+    };
 
+    struct LotSizeFilter {
+        std::string basePrecision;
+        std::string quotePrecision;
+        std::string minOrderQty;
+        std::string maxOrderQty;
+        std::string minOrderAmt;
+        std::string maxOrderAmt;
+    };
+
+    struct RiskParameters {
+        std::string priceLimitRatioX;
+        std::string priceLimitRatioY;
+    };
+}
+
+// InstrumentInfoAPI - matches ByBit API JSON structure with nested objects
+// Deserializes directly from API format, then converts to flat InstrumentInfo for DAO
+struct InstrumentInfoAPI {
+    std::string symbol;
+    std::string baseCoin;
+    std::string quoteCoin;
+    std::string innovation;
+    InstrumentStatus status;
+    std::string marginTrading;
+    std::string stTag;
+
+    // Nested objects from ByBit API
+    detail::PriceFilter priceFilter;
+    detail::LotSizeFilter lotSizeFilter;
+    detail::RiskParameters riskParameters;
+
+    // Conversion operator to flat InstrumentInfo for DAO storage
+    operator InstrumentInfo() const {
+        return InstrumentInfo {
+            symbol, baseCoin, quoteCoin, innovation, status, marginTrading, stTag,
+            priceFilter.tickSize, priceFilter.minPrice, priceFilter.maxPrice,
+            lotSizeFilter.basePrecision, lotSizeFilter.quotePrecision,
+            lotSizeFilter.minOrderQty, lotSizeFilter.maxOrderQty,
+            lotSizeFilter.minOrderAmt, lotSizeFilter.maxOrderAmt,
+            riskParameters.priceLimitRatioX, riskParameters.priceLimitRatioY
+        };
+    }
+};
 
 } // namespace scratcher::bybit
 

@@ -16,10 +16,10 @@
 
 #include <string>
 #include <optional>
-#include <glaze/glaze.hpp>
 #include "enums.hpp"
-#include "glaze/core/common.hpp"
-#include "glaze/core/wrappers.hpp"
+#include <glaze/glaze.hpp>
+#include <glaze/core/common.hpp>
+#include <glaze/core/wrappers.hpp>
 
 namespace scratcher::bybit {
 

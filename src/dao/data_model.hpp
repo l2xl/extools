@@ -14,14 +14,15 @@
 #ifndef SCRATCHER_DAO_HPP
 #define SCRATCHER_DAO_HPP
 
-#include "query_builder.hpp"
-#include "operations.hpp"
-#include "metadata.hpp"
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <glaze/glaze.hpp>
 #include <memory>
-#include <functional>
 #include <algorithm>
+#include <concepts>
+
+#include "query_builder.hpp"
+#include "operations.hpp"
+#include "metadata.hpp"
 
 namespace scratcher::dao {
 
@@ -73,14 +74,16 @@ public:
     const metadata_type& metadata() const
     { return m_metadata; }
 
-    void insert(const Entity &entity) {
+    template<std::convertible_to<Entity> T>
+    void insert(const T &entity) {
         Insert<data_model> insert_op(this->shared_from_this());
-        insert_op(entity);
+        insert_op(static_cast<const Entity&>(entity));
     }
 
-    bool insert_or_replace(const Entity &entity) {
+    template<std::convertible_to<Entity> T>
+    bool insert_or_replace(const T &entity) {
         InsertOrReplace<data_model> insert_or_replace_op(this->shared_from_this());
-        return insert_or_replace_op(entity);
+        return insert_or_replace_op(static_cast<const Entity&>(entity));
     }
 
     // Variadic template query method - primary interface for conditional queries
@@ -91,9 +94,10 @@ public:
     }
 
     // Update method - updates entity by primary key
-    void update(const Entity &entity) {
+    template<std::convertible_to<Entity> T>
+    void update(const T &entity) {
         Update<data_model> update_op(this->shared_from_this());
-        update_op(entity);
+        update_op(static_cast<const Entity&>(entity));
     }
 
     // Variadic template remove method - primary interface for delete operations

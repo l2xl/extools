@@ -1,7 +1,15 @@
 // Scratcher project
 // Copyright (c) 2025 l2xl (l2xl/at/proton.me)
-// Distributed under the MIT software license, see the accompanying
-// file LICENSE or https://opensource.org/license/mit
+// Distributed under the Intellectual Property Reserve License (IPRL)
+// -----BEGIN PGP PUBLIC KEY BLOCK-----
+//
+// mDMEYdxcVRYJKwYBBAHaRw8BAQdAfacBVThCP5QDPEgSbSIudtpJS4Y4Imm5dzaN
+// lM1HTem0IkwyIFhsIChsMnhsKSA8bDJ4bEBwcm90b25tYWlsLmNvbT6IkAQTFggA
+// OBYhBKRCfUyWnduCkisNl+WRcOaCK79JBQJh3FxVAhsDBQsJCAcCBhUKCQgLAgQW
+// AgMBAh4BAheAAAoJEOWRcOaCK79JDl8A/0/AjYVbAURZJXP3tHRgZyYyN9txT6mW
+// 0bYCcOf0rZ4NAQDoFX4dytPDvcjV7ovSQJ6dzvIoaRbKWGbHRCufrm5QBA==
+// =KKu7
+// -----END PGP PUBLIC KEY BLOCK-----
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -17,7 +25,6 @@
 #include "data/bybit/entities/response.hpp"
 #include "connect/connection_context.hpp"
 #include "datahub/data_sink.hpp"
-#include "datahub/sync_policy.hpp"
 
 
 using namespace scratcher;
@@ -67,14 +74,14 @@ struct DataSinkTestFixture {
 // Global fixture instance that persists between tests
 static DataSinkTestFixture fixture;
 
-TEST_CASE("Write first", "[datahub][public_trades]")
+TEST_CASE("Write first", "[datahub][http]")
 {
     std::atomic<bool> data_received{false};
     std::atomic<int> callback_count{0};
     std::promise<void> completion_promise;
     auto completion_future = completion_promise.get_future();
 
-    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::execId, policy::query_on_init<bybit::PublicTrade>>
+    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::execId>
         (
             fixture.db,
             [&](std::deque<bybit::PublicTrade>&& trades, DataSource source){
@@ -117,7 +124,7 @@ TEST_CASE("Write first", "[datahub][public_trades]")
     REQUIRE(callback_count.load() == 1);
 }
 
-TEST_CASE("Write next", "[datahub][public_trades]")
+TEST_CASE("Write next", "[datahub][http]")
 {
     std::atomic<int> callback_count{0};
     std::vector<std::pair<int, size_t>> callback_sequence; // callback_number, trades_count
@@ -125,7 +132,7 @@ TEST_CASE("Write next", "[datahub][public_trades]")
     std::promise<void> completion_promise;
     auto completion_future = completion_promise.get_future();
 
-    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::execId, policy::query_on_init<bybit::PublicTrade>>
+    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::execId>
         (
             fixture.db,
             [&](std::deque<bybit::PublicTrade>&& trades, DataSource source){
@@ -182,7 +189,7 @@ TEST_CASE("Write next", "[datahub][public_trades]")
               << "2nd callback had " << callback_sequence[1].second << " trades (from network)" << std::endl;
 }
 
-TEST_CASE("full sync", "[datahub][public_trades][websocket]")
+TEST_CASE("full sync", "[datahub][http][websocket]")
 {
     // Track callbacks and data sources
     std::atomic<int> callback_count{0};
@@ -191,7 +198,7 @@ TEST_CASE("full sync", "[datahub][public_trades][websocket]")
     auto completion_future = completion_promise.get_future();
 
     // Create data sink (will load cached data from previous tests)
-    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::execId, policy::query_on_init<bybit::PublicTrade>>(
+    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::execId>(
         fixture.db,
         [&](std::deque<bybit::PublicTrade>&& trades, DataSource source) {
             std::lock_guard<std::mutex> lock(callback_mutex);
@@ -215,18 +222,14 @@ TEST_CASE("full sync", "[datahub][public_trades][websocket]")
     REQUIRE(btc_usdc_sink != nullptr);
 
     // Create acceptor for the data sink
-    auto entity_acceptor = btc_usdc_sink->data_acceptor<std::deque<bybit::PublicTrade>>();
+    auto trades_acceptor = btc_usdc_sink->data_acceptor<std::deque<bybit::PublicTrade>>();
+    auto wstrades_acceptor = btc_usdc_sink->data_acceptor<std::deque<bybit::WsPublicTrade>>();
 
     // Set up websocket adapter and dispatcher (for WebSocket public trade data)
     auto ws_resp_adapter = make_data_adapter<bybit::WsApiPayload<bybit::WsPublicTrade>>(
         [=](auto&& ws_payload) mutable {
             std::cout << "Websocket adapter received " << ws_payload.data.size() << " trades" << std::endl;
-            // Convert WsPublicTrade to PublicTrade via deque copy
-            std::deque<bybit::PublicTrade> trades;
-            for (auto& ws_trade : ws_payload.data) {
-                trades.push_back(static_cast<bybit::PublicTrade&>(ws_trade));
-            }
-            entity_acceptor(std::move(trades));
+            wstrades_acceptor(std::move(ws_payload.data));
         }
     );
 
@@ -236,7 +239,7 @@ TEST_CASE("full sync", "[datahub][public_trades][websocket]")
     auto http_resp_adapter = make_data_adapter<bybit::ApiResponse<bybit::ListResult<bybit::PublicTrade>>>(
         [=](auto&& resp) mutable {
             std::cout << "HTTP adapter received " << resp.result.list.size() << " historical trades" << std::endl;
-            entity_acceptor(std::move(resp.result.list));
+            trades_acceptor(std::move(resp.result.list));
         }
     );
 
