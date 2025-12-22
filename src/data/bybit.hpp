@@ -100,7 +100,8 @@ public:
 private:
     const std::shared_ptr<Config> mConfig;
 
-    std::shared_ptr<AsioScheduler> mScheduler;
+    std::shared_ptr<scheduler> mScheduler;
+    ssl::context m_ssl_ctx;
 
     boost::asio::ip::tcp::resolver::results_type m_resolved_http_host;
     std::atomic_bool m_is_http_resolved = false;
@@ -187,11 +188,13 @@ private:
 
     struct EnsurePrivate {};
 public:
-    explicit ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler, EnsurePrivate);
-    static std::shared_ptr<ByBitApi> Create(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler);
+    explicit ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<scheduler> scheduler, EnsurePrivate);
+    static std::shared_ptr<ByBitApi> Create(std::shared_ptr<Config> config, std::shared_ptr<scheduler> scheduler);
 
-    const std::shared_ptr<AsioScheduler>& Scheduler() const
+    const std::shared_ptr<scheduler>& Scheduler() const
     { return mScheduler; }
+
+    ssl::context& ssl() { return m_ssl_ctx; }
 
     std::shared_ptr<ByBitSubscription> Subscribe(const std::string& symbol, std::shared_ptr<ByBitDataManager> manager);
     void Unsubscribe(const std::string& symbol);

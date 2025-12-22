@@ -58,15 +58,16 @@ bybit_error_category_impl bybit_error_category_impl::instance;
 
 //----------------------------------------------------------------------------------------------------------------------
 
-ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler, EnsurePrivate)
+ByBitApi::ByBitApi(std::shared_ptr<Config> config, std::shared_ptr<scheduler> scheduler, EnsurePrivate)
     : mConfig(move(config))
     , mScheduler(std::move(scheduler))
+    , m_ssl_ctx(ssl::context::tlsv12_client)
     , m_data_queue(10)
     , m_data_queue_strand(make_strand(mScheduler->io()))
 {
 }
 
-std::shared_ptr<ByBitApi> ByBitApi::Create(std::shared_ptr<Config> config, std::shared_ptr<AsioScheduler> scheduler)
+std::shared_ptr<ByBitApi> ByBitApi::Create(std::shared_ptr<Config> config, std::shared_ptr<scheduler> scheduler)
 {
     auto self = std::make_shared<ByBitApi>(config, scheduler, EnsurePrivate{});
 
@@ -92,7 +93,7 @@ awaitable<std::string> ByBitApi::coRequestServerRaw(std::shared_ptr<ByBitApi> se
 
     if (self->m_resolved_http_host.empty()) throw xscratcher_error_code(error::no_host_name);
 
-    boost::beast::ssl_stream<boost::beast::tcp_stream> sock(co_await boost::asio::this_coro::executor, self->mScheduler->ssl());
+    boost::beast::ssl_stream<boost::beast::tcp_stream> sock(co_await boost::asio::this_coro::executor, self->ssl());
 
     co_await get_lowest_layer(sock).async_connect(self->m_resolved_http_host, boost::asio::use_awaitable);
 

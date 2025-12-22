@@ -37,21 +37,21 @@ char const * xscratcher_error_category_impl::message(int e, char *buffer, std::s
     return buffer;
 }
 
-AsioScheduler::AsioScheduler(EnsurePrivate)
-    : m_io_ctx(), m_ssl_ctx(ssl::context::tlsv12_client)
+scheduler::scheduler(EnsurePrivate)
+    : m_io_ctx()
     , m_io_guard(make_work_guard(m_io_ctx))
 {
 }
 
-AsioScheduler::~AsioScheduler()
+scheduler::~scheduler()
 {
     m_io_guard.reset();
     for (auto& t: m_threads) t.join();
 }
 
-std::shared_ptr<AsioScheduler> AsioScheduler::Create(size_t threads)
+std::shared_ptr<scheduler> scheduler::create(size_t threads)
 {
-    auto self = std::make_shared<AsioScheduler>(EnsurePrivate{});
+    auto self = std::make_shared<scheduler>(EnsurePrivate{});
     for (size_t i: std::ranges::iota_view(0ul, threads))
         self->m_threads.emplace_back([self]{ self->io().run(); });
 

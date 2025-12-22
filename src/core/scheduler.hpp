@@ -43,21 +43,19 @@ using boost::asio::detached;
 
 namespace ssl = boost::asio::ssl;
 
-class AsioScheduler: public std::enable_shared_from_this<AsioScheduler> {
+class scheduler: public std::enable_shared_from_this<scheduler> {
     io_context m_io_ctx;
-    ssl::context m_ssl_ctx;
     boost::asio::executor_work_guard<io_context::executor_type> m_io_guard;
     std::list<std::thread> m_threads;
 
     struct EnsurePrivate {};
 public:
-    explicit AsioScheduler(EnsurePrivate);
-    virtual ~AsioScheduler();
+    explicit scheduler(EnsurePrivate);
+    virtual ~scheduler();
 
-    static std::shared_ptr<AsioScheduler> Create(size_t threads);
+    static std::shared_ptr<scheduler> create(size_t threads);
 
     io_context& io() {return m_io_ctx; }
-    ssl::context& ssl() {return m_ssl_ctx; }
 };
 }
 
