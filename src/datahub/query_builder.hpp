@@ -16,10 +16,8 @@
 
 #include <string>
 #include <vector>
-#include <variant>
-#include <cstdint>
 
-namespace scratcher::dao {
+namespace datahub {
 
 
 /**
@@ -174,6 +172,6 @@ private:
     static std::string generate_placeholders(size_t count);
 };
 
-} // namespace scratcher::dao
+} // namespace datahub
 
 #endif //  SCRATCHER_QUERY_BUILDER_HPP

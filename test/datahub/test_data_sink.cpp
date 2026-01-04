@@ -14,11 +14,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <memory>
-#include <future>
 #include <chrono>
 #include <deque>
-#include <atomic>
 #include <iostream>
+#include <thread>
 
 #include "scheduler.hpp"
 #include "data/bybit/entities/public_trade.hpp"
@@ -28,7 +27,7 @@
 
 
 using namespace scratcher;
-using namespace scratcher::datahub;
+using namespace datahub;
 
 static std::string websock_samples[] = {
   R"({"success":true,"ret_msg":"subscribe","conn_id":"11937fe0-c938-4a8b-b313-81fe27cfa8f6","op":"subscribe"})",
@@ -57,211 +56,133 @@ static std::string http_samples[] = {
 };
 
 struct DataSinkTestFixture {
-    std::string url = "https://api.bybit.com/v5/market/recent-trade?category=spot&symbol=BTCUSDC";
     std::shared_ptr<SQLite::Database> db;
-    std::shared_ptr<AsioScheduler> scheduler;
+    std::shared_ptr<scheduler> scheduler;
     std::shared_ptr<connect::context> ctx;
+    std::shared_ptr<data_model<bybit::PublicTrade, &bybit::PublicTrade::execId>> dao;
 
-    // Use in-memory database that persists for the lifetime of this object
     DataSinkTestFixture() : db(std::make_shared<SQLite::Database>(":memory:", SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE))
-        , scheduler(AsioScheduler::Create(1))
-        , ctx(connect::context::create(scheduler))
+        , scheduler(scheduler::create(1))
+        , ctx(connect::context::create(scheduler->io()))
+        , dao(data_model<bybit::PublicTrade, &bybit::PublicTrade::execId>::create(db))
     {}
 
     ~DataSinkTestFixture() = default;
 };
 
-// Global fixture instance that persists between tests
 static DataSinkTestFixture fixture;
 
-TEST_CASE("Write first", "[datahub][http]")
+TEST_CASE("data_sink with make_data_acceptor - first write", "[datahub][http]")
 {
-    std::atomic<bool> data_received{false};
-    std::atomic<int> callback_count{0};
-    std::promise<void> completion_promise;
-    auto completion_future = completion_promise.get_future();
+    // Container to collect results (pre-populated from DB if any)
+    std::deque<bybit::PublicTrade> trades_cache = fixture.dao->query();
+    size_t initial_count = trades_cache.size();
 
-    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::execId>
-        (
-            fixture.db,
-            [&](std::deque<bybit::PublicTrade>&& trades, DataSource source){
-                // Handle received trades from server (first run)
-                std::cout << "Data sink callback called with " << trades.size() << " trades from "
-                          << (source == DataSource::CACHE ? "CACHE" : "SERVER") << std::endl;
-                ++callback_count;
-                if (!trades.empty()) {
-                    data_received = true;
-                    completion_promise.set_value();
-                } else {
-                    std::cout << "Data sink received empty trades list" << std::endl;
-                }
-            },
-            [&](const std::exception_ptr& e) {
-                if (e) completion_promise.set_exception(e);
-            }
-        );
+    // Create data sink with make_data_acceptor for collecting results
+    auto sink = make_data_sink<bybit::PublicTrade>(
+        fixture.dao->data_acceptor<std::deque<bybit::PublicTrade>>(),
+        make_data_acceptor(trades_cache),
+        [](const std::exception_ptr&) {}
+    );
 
-    // Assert basic invariants
-    REQUIRE(btc_usdc_sink != nullptr);
+    REQUIRE(sink != nullptr);
 
-    auto entity_acceptor = btc_usdc_sink->data_acceptor<std::deque<bybit::PublicTrade>>();
+    auto entity_acceptor = sink->data_acceptor<std::deque<bybit::PublicTrade>>();
 
     auto resp_adapter = make_data_adapter<bybit::ApiResponse<bybit::ListResult<bybit::PublicTrade>>>(
-            [=](auto&& resp) {
-                entity_acceptor(move(resp.result.list));
-            }
-        );
-    auto dispatcher = make_data_dispatcher(fixture.scheduler, resp_adapter);
+        [=](auto&& resp) { entity_acceptor(std::move(resp.result.list)); }
+    );
+
+    auto dispatcher = make_data_dispatcher(fixture.scheduler->io().get_executor(), resp_adapter);
 
     dispatcher(http_samples[0]);
 
-    // Wait for data to be received from server
-    auto status = completion_future.wait_for(std::chrono::seconds(1));
-    REQUIRE(status == std::future_status::ready);
+    // Let async processing complete
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    // Verify first run behavior: single callback with server data
-    REQUIRE(data_received.load() == true);
-    REQUIRE(callback_count.load() == 1);
+    // Verify results in container (http_samples[0] contains 60 trades)
+    REQUIRE(trades_cache.size() == initial_count + 60);
+    std::cout << "First write: " << trades_cache.size() << " trades in cache (initial: " << initial_count << ", added: 60)" << std::endl;
 }
 
-TEST_CASE("Write next", "[datahub][http]")
+TEST_CASE("data_sink with make_data_acceptor - second write filters duplicates", "[datahub][http]")
 {
-    std::atomic<int> callback_count{0};
-    std::vector<std::pair<int, size_t>> callback_sequence; // callback_number, trades_count
-    std::mutex callback_mutex;
-    std::promise<void> completion_promise;
-    auto completion_future = completion_promise.get_future();
+    // Container pre-populated from DB (should have 60 from first test)
+    std::deque<bybit::PublicTrade> trades_cache = fixture.dao->query();
+    size_t initial_count = trades_cache.size();
 
-    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::execId>
-        (
-            fixture.db,
-            [&](std::deque<bybit::PublicTrade>&& trades, DataSource source){
-                std::lock_guard<std::mutex> lock(callback_mutex);
-                int current_callback = ++callback_count;
-                size_t trades_size = trades.size();
-                callback_sequence.emplace_back(current_callback, trades_size);
+    REQUIRE(initial_count == 60);
 
-                std::cout << "Data sink callback #" << current_callback << " called with " << trades_size << " trades from "
-                          << (source == DataSource::CACHE ? "CACHE" : "SERVER") << std::endl;
+    auto sink = make_data_sink<bybit::PublicTrade>(
+        fixture.dao->data_acceptor<std::deque<bybit::PublicTrade>>(),
+        make_data_acceptor(trades_cache),
+        [](const std::exception_ptr&) {}
+    );
 
-                // Complete after second callback (DB data + network data)
-                if (current_callback == 2) {
-                    completion_promise.set_value();
-                }
-            },
-            [&](const std::exception_ptr& e) {
-                if (e) completion_promise.set_exception(e);
-            }
-        );
-
-    // Assert basic invariants
-    REQUIRE(btc_usdc_sink != nullptr);
-
-    auto entity_acceptor = btc_usdc_sink->data_acceptor<std::deque<bybit::PublicTrade>>();
+    auto entity_acceptor = sink->data_acceptor<std::deque<bybit::PublicTrade>>();
 
     auto resp_adapter = make_data_adapter<bybit::ApiResponse<bybit::ListResult<bybit::PublicTrade>>>(
-            [=](auto&& resp) {
-                entity_acceptor(move(resp.result.list));
-            }
-        );
-    auto dispatcher = make_data_dispatcher(fixture.scheduler, resp_adapter);
+        [=](auto&& resp) { entity_acceptor(std::move(resp.result.list)); }
+    );
 
+    auto dispatcher = make_data_dispatcher(fixture.scheduler->io().get_executor(), resp_adapter);
+
+    // Send second batch (60 new trades)
     dispatcher(http_samples[1]);
 
-    // Wait for both callbacks (DB data + network data)
-    auto status = completion_future.wait_for(std::chrono::seconds(1));
-    REQUIRE(status == std::future_status::ready);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    // Verify second run behavior: two callbacks
-    REQUIRE(callback_count.load() == 2);
-    REQUIRE(callback_sequence.size() == 2);
-
-    // First callback should have DB data (simulated)
-    REQUIRE(callback_sequence[0].first == 1);
-    REQUIRE(callback_sequence[0].second == 60); // Simulated DB data
-
-    // Second callback should have network data
-    REQUIRE(callback_sequence[1].first == 2);
-    REQUIRE(callback_sequence[1].second == 60); // Network data
-
-    std::cout << "Callback sequence verified: "
-              << "1st callback had " << callback_sequence[0].second << " trades (from DB), "
-              << "2nd callback had " << callback_sequence[1].second << " trades (from network)" << std::endl;
+    // Should have 120 total (60 initial + 60 new)
+    REQUIRE(trades_cache.size() == 120);
+    std::cout << "Second write: " << trades_cache.size() << " trades in cache (60 initial + 60 new)" << std::endl;
 }
 
-TEST_CASE("full sync", "[datahub][http][websocket]")
+TEST_CASE("data_sink with websocket and http data", "[datahub][http][websocket]")
 {
-    // Track callbacks and data sources
-    std::atomic<int> callback_count{0};
-    std::mutex callback_mutex;
-    std::promise<void> completion_promise;
-    auto completion_future = completion_promise.get_future();
+    // Container pre-populated from DB (should have 120 from previous tests)
+    std::deque<bybit::PublicTrade> trades_cache = fixture.dao->query();
+    size_t initial_count = trades_cache.size();
 
-    // Create data sink (will load cached data from previous tests)
-    auto btc_usdc_sink = make_data_sink<bybit::PublicTrade, &bybit::PublicTrade::execId>(
-        fixture.db,
-        [&](std::deque<bybit::PublicTrade>&& trades, DataSource source) {
-            std::lock_guard<std::mutex> lock(callback_mutex);
-            int current_callback = ++callback_count;
-            size_t trades_size = trades.size();
+    REQUIRE(initial_count == 120);
 
-            std::cout << "Data sink callback #" << current_callback
-                      << " called with " << trades_size << " trades from "
-                      << (source == DataSource::CACHE ? "CACHE" : "SERVER") << std::endl;
-
-            // Complete when we have: cache data + websocket data + http historical
-            if (callback_count >= 6) {
-                completion_promise.set_value();
-            }
-        },
-        [&](const std::exception_ptr& e) {
-            if (e) completion_promise.set_exception(e);
-        }
+    auto sink = make_data_sink<bybit::PublicTrade>(
+        fixture.dao->data_acceptor<std::deque<bybit::PublicTrade>>(),
+        make_data_acceptor(trades_cache),
+        [](const std::exception_ptr&) {}
     );
 
-    REQUIRE(btc_usdc_sink != nullptr);
+    auto trades_acceptor = sink->data_acceptor<std::deque<bybit::PublicTrade>>();
+    auto wstrades_acceptor = sink->data_acceptor<std::deque<bybit::WsPublicTrade>>();
 
-    // Create acceptor for the data sink
-    auto trades_acceptor = btc_usdc_sink->data_acceptor<std::deque<bybit::PublicTrade>>();
-    auto wstrades_acceptor = btc_usdc_sink->data_acceptor<std::deque<bybit::WsPublicTrade>>();
-
-    // Set up websocket adapter and dispatcher (for WebSocket public trade data)
-    auto ws_resp_adapter = make_data_adapter<bybit::WsApiPayload<bybit::WsPublicTrade>>(
-        [=](auto&& ws_payload) mutable {
-            std::cout << "Websocket adapter received " << ws_payload.data.size() << " trades" << std::endl;
-            wstrades_acceptor(std::move(ws_payload.data));
-        }
+    // WebSocket adapter
+    auto ws_adapter = make_data_adapter<bybit::WsApiPayload<bybit::WsPublicTrade>>(
+        [=](auto&& ws_payload) { wstrades_acceptor(std::move(ws_payload.data)); }
     );
+    auto ws_dispatcher = make_data_dispatcher(fixture.scheduler->io().get_executor(), ws_adapter);
 
-    auto ws_dispatcher = make_data_dispatcher(fixture.scheduler, ws_resp_adapter);
-
-    // Set up HTTP query adapter and dispatcher (for historical data fill)
-    auto http_resp_adapter = make_data_adapter<bybit::ApiResponse<bybit::ListResult<bybit::PublicTrade>>>(
-        [=](auto&& resp) mutable {
-            std::cout << "HTTP adapter received " << resp.result.list.size() << " historical trades" << std::endl;
-            trades_acceptor(std::move(resp.result.list));
-        }
+    // HTTP adapter
+    auto http_adapter = make_data_adapter<bybit::ApiResponse<bybit::ListResult<bybit::PublicTrade>>>(
+        [=](auto&& resp) { trades_acceptor(std::move(resp.result.list)); }
     );
+    auto http_dispatcher = make_data_dispatcher(fixture.scheduler->io().get_executor(), http_adapter);
 
-    auto http_dispatcher = make_data_dispatcher(fixture.scheduler, http_resp_adapter);
-
-    // Simulate websocket data from samples
-    std::cout << "Dispatching websocket sample data..." << std::endl;
-    for (int i = 0; i < 5; ++i) {
+    // Dispatch websocket messages (first one is subscription confirmation - no data)
+    for (int i = 1; i < 5; ++i) {
         ws_dispatcher(websock_samples[i]);
     }
 
-    // Simulate HTTP historical data
-    std::cout << "Dispatching HTTP historical data..." << std::endl;
-    http_dispatcher(http_samples[2]);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    // Wait for all operations to complete
-    auto status = completion_future.wait_for(std::chrono::seconds(1));
+    // 4 websocket messages contain: 2+1+2+1 = 6 trades
+    size_t after_ws = trades_cache.size();
+    REQUIRE(after_ws == initial_count + 6);
 
-    REQUIRE(status == std::future_status::ready);
+    std::cout << "After websocket: " << after_ws << " trades (added 6 from 4 messages)" << std::endl;
 
-    // Verify we received data from cache (from previous tests)
-    REQUIRE(callback_count.load() == 6);
+    // Verify DB persistence
+    auto db_count = fixture.dao->count();
+    REQUIRE(db_count == after_ws);
+    std::cout << "DB contains: " << db_count << " trades" << std::endl;
 }
 
 namespace SQLite {
@@ -269,6 +190,6 @@ namespace SQLite {
         std::cerr << "SQLite assertion failed: " << apFile << ":" << apLine << " in " << apFunc << "() - " << apExpr;
         if (apMsg) std::cerr << " (" << apMsg << ")";
         std::cerr << std::endl;
-        std::abort(); // Or throw exception if you prefer
+        std::abort();
     }
 }

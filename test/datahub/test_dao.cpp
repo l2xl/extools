@@ -18,11 +18,11 @@
 #include <iostream>
 #include <SQLiteCpp/SQLiteCpp.h>
 
-#include "data_model.hpp"
+#include "../../src/datahub/data_model.hpp"
 #include "data/bybit/entities/fee_rate.hpp"
 #include "data/bybit/entities/public_trade.hpp"
 
-using namespace scratcher::dao;
+using namespace datahub;
 using namespace scratcher::bybit;
 
 // Helper to create an in-memory database for testing

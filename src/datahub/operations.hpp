@@ -13,7 +13,7 @@
 
 #include "sqlite3.h"
 
-namespace scratcher::dao {
+namespace datahub {
 
 
 /**
@@ -482,6 +482,6 @@ private:
 //     bool is_executed() const { return m_executed; }
 // };
 
-} // namespace scratcher::dao
+} // namespace datahub
 
 #endif // SCRATCHER_DAO_OPERATIONS_HPP

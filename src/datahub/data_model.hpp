@@ -19,12 +19,14 @@
 #include <memory>
 #include <algorithm>
 #include <concepts>
+#include <ranges>
+#include <deque>
 
 #include "query_builder.hpp"
 #include "operations.hpp"
 #include "metadata.hpp"
 
-namespace scratcher::dao {
+namespace datahub {
 
 class QueryCondition;
 
@@ -117,6 +119,22 @@ public:
         return count_op(std::forward<Args>(args)...);
     }
 
+    template <std::ranges::input_range Range>
+    requires std::convertible_to<std::ranges::range_value_t<Range>, Entity>
+    auto data_acceptor() {
+        std::weak_ptr<data_model> ref = this->shared_from_this();
+        return [=](Range&& entities)->std::deque<Entity> {
+            std::deque<Entity> new_entities;
+            if (auto self = ref.lock()) {
+                for (auto&& entity : std::forward<Range>(entities)) {
+                    if (self->insert_or_replace(entity))
+                        new_entities.emplace_back(std::forward<decltype(entity)>(entity));
+                }
+            }
+            return new_entities;
+        };
+    }
+
     void drop_table() {
         if (m_db->tableExists(name())) {
             std::string sql = QueryBuilder::drop_table(m_metadata.table_name);
@@ -130,6 +148,6 @@ public:
     // }
 };
 
-} // namespace scratcher::dao
+} // namespace datahub
 
 #endif // SCRATCHER_DAO_HPP

@@ -29,7 +29,7 @@
 
 
 using namespace scratcher;
-using namespace scratcher::datahub;
+using namespace datahub;
 
 static std::string http_samples[] = {
   R"({"retCode":0,"retMsg":"OK","result":{"category":"spot","list":[{"symbol":"BTCUSDC","baseCoin":"BTC","quoteCoin":"USDC","innovation":"0","status":"Trading","marginTrading":"none","stTag":"0","priceFilter":{"tickSize":"0.5","minPrice":"100","maxPrice":"999999"},"lotSizeFilter":{"basePrecision":"0.000001","quotePrecision":"0.01","minOrderQty":"0.00001","maxOrderQty":"10000","minOrderAmt":"10","maxOrderAmt":"500000"},"riskParameters":{"priceLimitRatioX":"0.05","priceLimitRatioY":"0.05"}}]},"retExtInfo":{},"time":1761520794180})",
@@ -38,13 +38,13 @@ static std::string http_samples[] = {
 struct DataModelTestFixture {
     std::string url = "https://api.bybit.com/v5/market/recent-trade?category=spot&symbol=BTCUSDC";
     std::shared_ptr<SQLite::Database> db;
-    std::shared_ptr<AsioScheduler> scheduler;
+    std::shared_ptr<scheduler> scheduler;
     std::shared_ptr<connect::context> ctx;
 
     // Use in-memory database that persists for the lifetime of this object
     DataModelTestFixture() : db(std::make_shared<SQLite::Database>(":memory:", SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE))
-        , scheduler(AsioScheduler::Create(1))
-        , ctx(connect::context::create(scheduler))
+        , scheduler(scheduler::create(1))
+        , ctx(connect::context::create(scheduler->io()))
     {}
 
     ~DataModelTestFixture() = default;
@@ -99,7 +99,7 @@ TEST_CASE("Write first", "[bybit][instruments]")
                 entity_acceptor(move(resp.result.list));
             }
         );
-    auto dispatcher = make_data_dispatcher(fixture.scheduler, resp_adapter);
+    auto dispatcher = make_data_dispatcher(fixture.scheduler->io().get_executor(), resp_adapter);
 
     // auto query = connect::http_query::create(fixture.ctx, "https://api.bybit.com/v5/market/instruments-info",
     //     dispatcher,

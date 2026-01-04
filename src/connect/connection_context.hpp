@@ -18,20 +18,25 @@
 #include <string>
 #include <atomic>
 #include <boost/asio.hpp>
+#include <boost/asio/ssl.hpp>
 #include <boost/container/flat_map.hpp>
 
-#include "scheduler.hpp"
+namespace scratcher {
+using boost::asio::io_context;
+namespace ssl = boost::asio::ssl;
+}
 
 namespace scratcher::connect {
 
 /**
  * @brief ConnectionContext manages shared connection infrastructure
- * 
+ *
  * This class provides common functionality needed by both JSON-RPC and WebSocket connections:
- * - AsioScheduler reference for async operations
+ * - IO context reference for async operations
+ * - SSL context for secure connections
  * - Host resolution and caching with strand-based thread safety
  * - Connection parameters management
- * 
+ *
  * The context is shared between multiple connection instances to avoid duplicate
  * DNS resolution and provide consistent connection parameters.
  */
@@ -42,12 +47,15 @@ public:
     using HostPortKey = std::string;
 
 private:
-    std::shared_ptr<AsioScheduler> m_scheduler;
-    
+    std::reference_wrapper<io_context> m_io_ctx;
+
+    // SSL context for secure connections
+    ssl::context m_ssl_ctx;
+
     // Resolution cache with strand for thread safety
     boost::asio::strand<io_context::executor_type> m_resolution_strand;
     boost::container::flat_map<HostPortKey, boost::asio::ip::tcp::resolver::results_type> m_resolution_cache;
-    
+
     // Connection parameters
     std::chrono::milliseconds m_timeout;
 
@@ -55,12 +63,13 @@ private:
 public:
     /**
      * @brief Construct ConnectionContext with required parameters
-     * @param scheduler AsioScheduler for async operations
+     * @param io_ctx IO context for async operations
      * @param timeout Request timeout duration
      */
-    context(std::shared_ptr<AsioScheduler> scheduler, std::chrono::milliseconds timeout, ensure_private)
-        : m_scheduler(std::move(scheduler))
-        , m_resolution_strand(boost::asio::make_strand(m_scheduler->io()))
+    context(io_context& io_ctx, std::chrono::milliseconds timeout, ensure_private)
+        : m_io_ctx(io_ctx)
+        , m_ssl_ctx(ssl::context::tlsv12_client)
+        , m_resolution_strand(boost::asio::make_strand(m_io_ctx.get()))
         , m_timeout(timeout)
     {}
 
@@ -68,11 +77,12 @@ public:
      * @brief Create ConnectionContext
      */
     static std::shared_ptr<context> create(
-        std::shared_ptr<AsioScheduler> scheduler,
+        io_context& io_ctx,
         std::chrono::milliseconds timeout = std::chrono::milliseconds(10000));
-    
+
     // Accessors
-    std::shared_ptr<AsioScheduler> scheduler() const { return m_scheduler; }
+    io_context& io() { return m_io_ctx.get(); }
+    ssl::context& ssl() { return m_ssl_ctx; }
     std::chrono::milliseconds timeout() const { return m_timeout; }
     
     /**

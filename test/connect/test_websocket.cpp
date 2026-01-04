@@ -28,10 +28,10 @@ using namespace scratcher::connect;
 TEST_CASE("subscribepublic trades", "[connect][websocket]")
 {
     // Create scheduler
-    auto scheduler = AsioScheduler::Create(1);
+    auto scheduler = scheduler::create(1);
     
     // Create connection context
-    auto context = context::create(scheduler);
+    auto context = context::create(scheduler->io());
     
     // Create promise/future for synchronization
     std::promise<std::string> response_promise;

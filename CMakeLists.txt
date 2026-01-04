@@ -84,35 +84,33 @@ set(core_SOURCES
         src/common/data_rectangle.hpp
         src/core/scheduler.cpp
         src/core/scheduler.hpp
-        src/data/db_storage.cpp
-        src/data/db_storage.hpp
         src/data/buoy_candle.cpp
         src/data/buoy_candle.hpp
-        src/data/bybit.cpp
-        src/data/bybit.hpp
+        # DEPRECATED: src/data/bybit.cpp - replaced by datahub stack
+        # DEPRECATED: src/data/bybit.hpp - replaced by datahub stack
         src/data/data_provider.cpp
         src/data/data_provider.hpp
         src/data/entities/common.hpp
         src/data/entities/common.cpp
         src/data/entities/instrument.hpp
         src/data/entities/trade.hpp
-        src/data/bybit/stream.cpp
-        src/data/bybit/stream.hpp
-        src/data/bybit/data_manager.cpp
-        src/data/bybit/data_manager.hpp
+        # DEPRECATED: src/data/bybit/stream.cpp - replaced by websock_connection + data_sink
+        # DEPRECATED: src/data/bybit/stream.hpp - replaced by websock_connection + data_sink
+        # REMOVED TEMPORARILY src/data/bybit/data_manager.cpp
+        # REMOVED TEMPORARILY src/data/bybit/data_manager.hpp
         src/data/bybit/error.hpp
-        src/data/bybit/subscription.hpp
-        src/dao/data_model.hpp
-        src/dao/operations.hpp
-        src/dao/query_builder.hpp
-        src/dao/query_builder.cpp
-        src/dao/metadata.hpp
+        # DEPRECATED: src/data/bybit/subscription.hpp - absorbed into data_sink pattern
         src/connect/connection_context.hpp
         src/connect/connection_context.cpp
         src/connect/http_query.hpp
         src/connect/http_query.cpp
         src/connect/websocket.hpp
         src/connect/websocket.cpp
+        src/datahub/data_model.hpp
+        src/datahub/operations.hpp
+        src/datahub/query_builder.hpp
+        src/datahub/query_builder.cpp
+        src/datahub/metadata.hpp
         src/datahub/data_sink.hpp
 )
 
@@ -126,6 +124,8 @@ set(PROJECT_SOURCES
         src/widget/scratch_widget.h
         src/widget/content_frame.h
         src/widget/content_frame.cpp
+        src/widget/instrument_dropbox.h
+        src/widget/instrument_dropbox.cpp
         src/widget/scratcher.hpp
         src/widget/quote_scratcher.cpp
         src/widget/quote_scratcher.hpp
@@ -147,18 +147,17 @@ include_directories(
         src/app
         src/data
         src/data/entities
-        src/dao
+        src/datahub
         src/widget
 )
 
-target_link_libraries(core PRIVATE Qt6::Widgets Qt6::Svg)
 target_link_libraries(core PRIVATE ${Boost_LIBRARIES})
 target_link_libraries(core PRIVATE OpenSSL::SSL)
 target_link_libraries(core PRIVATE TBB::tbb)
-target_link_libraries(core PRIVATE SQLiteCpp)
-target_link_libraries(core PRIVATE glaze::glaze)
+target_link_libraries(core PUBLIC SQLiteCpp)
+target_link_libraries(core PUBLIC glaze::glaze)
 
-target_link_libraries(exscratcher PRIVATE core)
+target_link_libraries(exscratcher PRIVATE core Qt6::Widgets Qt6::Svg)
 
 include(GNUInstallDirs)
 install(TARGETS exscratcher
@@ -189,7 +188,7 @@ if(NOT ANDROID)
     # Add each test file as a separate executable
     add_test(test_currency test/common/test_currency.cpp)
     add_test(test_buoy_candle test/core/test_buoy_candle.cpp)
-    add_test(test_dao test/dao/test_dao.cpp)
+    add_test(test_dao test/datahub/test_dao.cpp)
     add_test(test_http_query test/connect/test_http_query.cpp)
     add_test(test_websocket test/connect/test_websocket.cpp)
     add_test(test_data_sink test/datahub/test_data_sink.cpp)

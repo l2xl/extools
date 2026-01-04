@@ -17,20 +17,33 @@
 #include <QApplication>
 
 #include "scheduler.hpp"
-#include "bybit.hpp"
+#include <SQLiteCpp/SQLiteCpp.h>
+
+// SQLiteCpp requires this assertion handler when SQLITECPP_ENABLE_ASSERT_HANDLER is defined
+namespace SQLite {
+    void assertion_failed(const char* apFile, int apLine, const char* apFunc, const char* apExpr, const char* apMsg) {
+        std::cerr << "SQLite assertion failed: " << apFile << ":" << apLine << " in " << apFunc << "() - " << apExpr;
+        if (apMsg) std::cerr << " (" << apMsg << ")";
+        std::cerr << std::endl;
+        std::abort();
+    }
+}
 
 int main(int argc, char *argv[])
 {
     try {
         QApplication a(argc, argv);
-        
+
         auto config = std::make_shared<Config>(argc, argv);
 
-        auto scheduler = scratcher::AsioScheduler::Create(2);
+        auto scheduler = scratcher::scheduler::create(2);
 
-        auto bybit = scratcher::bybit::ByBitApi::Create(config, scheduler);
+        // Create SQLite database for datahub persistence
+        auto database = std::make_shared<SQLite::Database>(
+            config->DataDir() + "/market_data.sqlite",
+            SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
 
-        auto w = TradeCockpitWindow::Create(scheduler, bybit);
+        auto w = TradeCockpitWindow::Create(scheduler, config, database);
 
         return a.exec();
     }

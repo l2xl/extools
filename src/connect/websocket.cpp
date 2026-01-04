@@ -24,11 +24,11 @@ using boost::asio::use_awaitable;
 namespace this_coro =  boost::asio::this_coro;
 
 
-websock_connection::websock_connection(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler, ensure_private)
-    : m_context(std::move(context))
+websock_connection::websock_connection(std::shared_ptr<context> ctx, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler, ensure_private)
+    : m_context(ctx)
     , m_data_handler(std::move(data_handler))
     , m_error_handler(std::move(error_handler))
-    , m_strand(make_strand(context->scheduler()->io()))
+    , m_strand(make_strand(ctx->io()))
     , m_heartbeat_timer(std::make_shared<boost::asio::steady_timer>(m_strand, std::chrono::steady_clock::time_point::max()))
     , m_last_heartbeat(std::chrono::steady_clock::time_point::min())
 {
@@ -220,7 +220,7 @@ boost::asio::awaitable<void> websock_connection::co_open(std::shared_ptr<websock
             self->m_websocket.reset();
         }
 
-        auto websock = std::make_shared<websocket_stream>(co_await this_coro::executor, context->scheduler()->ssl());
+        auto websock = std::make_shared<websocket_stream>(co_await this_coro::executor, context->ssl());
 
         get_lowest_layer(*websock).expires_after(std::chrono::seconds(30));
 

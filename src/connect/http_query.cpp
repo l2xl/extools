@@ -48,7 +48,7 @@ http_query::http_query(std::shared_ptr<context> context, const std::string& url,
                 throw std::invalid_argument("Unsupported scheme: " + scheme);
         }
 
-        co_spawn(context->scheduler()->io(), context->co_resolve(context, m_host, m_port), detached);
+        co_spawn(context->io(), context->co_resolve(context, m_host, m_port), detached);
     }
     catch (...) {
         std::throw_with_nested(std::invalid_argument("Invalid URL: " + url));
@@ -89,7 +89,7 @@ void http_query::operator()(std::string query_params)
     std::weak_ptr<http_query> ref = weak_from_this();
     if (auto ctx = m_context.lock())
     {
-        co_spawn(ctx->scheduler()->io(), co_request(ref, path_query), [ref](std::exception_ptr e, std::string result) {
+        co_spawn(ctx->io(), co_request(ref, path_query), [ref](std::exception_ptr e, std::string result) {
             if (auto self = ref.lock()) {
                 if (e) {
                     if (self->m_error_handler) {
@@ -127,7 +127,7 @@ boost::asio::awaitable<std::string> http_query::co_request(std::weak_ptr<http_qu
             auto resolved_endpoints = co_await context::co_resolve(context, host, port);
 
             // Create SSL stream with timeout
-            ssl_stream stream(co_await this_coro::executor, context->scheduler()->ssl());
+            ssl_stream stream(co_await this_coro::executor, context->ssl());
 
             // Set timeout on the lowest layer (TCP stream)
             boost::beast::get_lowest_layer(stream).expires_after(context->timeout());

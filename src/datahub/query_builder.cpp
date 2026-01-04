@@ -14,7 +14,7 @@
 #include "query_builder.hpp"
 #include <sstream>
 
-namespace scratcher::dao {
+namespace datahub {
 
 std::string QueryBuilder::select_where(const std::string& table_name, const std::string& where_clause) {
     return where_clause.empty() ? ("SELECT * FROM " + table_name) : ("SELECT * FROM " + table_name + " WHERE " + where_clause);
@@ -127,4 +127,4 @@ std::string QueryBuilder::generate_placeholders(size_t count) {
     return result.str();
 }
 
-} // namespace scratcher::dao
+} // namespace datahub

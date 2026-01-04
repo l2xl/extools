@@ -20,9 +20,9 @@ using boost::asio::co_spawn;
 using boost::asio::detached;
 using boost::asio::use_awaitable;
 
-std::shared_ptr<context> context::create(std::shared_ptr<AsioScheduler> scheduler, std::chrono::milliseconds timeout)
+std::shared_ptr<context> context::create(io_context& io_ctx, std::chrono::milliseconds timeout)
 {
-    return std::make_shared<context>( scheduler, timeout, ensure_private{});
+    return std::make_shared<context>(io_ctx, timeout, ensure_private{});
 }
 
 boost::asio::awaitable<boost::asio::ip::tcp::resolver::results_type>
@@ -43,7 +43,7 @@ context::co_resolve(std::shared_ptr<context> self, std::string host, std::string
 
     // Perform resolution
     std::clog << "Starting name resolution for " << key << std::endl;
-    boost::asio::ip::tcp::resolver resolver(self->m_scheduler->io());
+    boost::asio::ip::tcp::resolver resolver(self->io());
     auto results = co_await resolver.async_resolve(host, port, use_awaitable);
 
     self->m_resolution_cache.emplace(move(key), results);

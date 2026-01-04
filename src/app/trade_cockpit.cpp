@@ -13,14 +13,17 @@
 
 #include <boost/asio/co_spawn.hpp>
 
+#include <QVBoxLayout>
+
 #include "trade_cockpit.h"
 #include "ui_trade_cockpit.h"
 
 #include "market_controller.hpp"
 #include "content_frame.h"
 
-#include "bybit.hpp"
+#include "config.hpp"
 #include "bybit/data_manager.hpp"
+#include <SQLiteCpp/SQLiteCpp.h>
 
 #include <chrono>
 
@@ -32,35 +35,57 @@ typedef std::chrono::utc_clock::time_point time_point;
 
 namespace this_coro =  boost::asio::this_coro;
 
-TradeCockpitWindow::TradeCockpitWindow(std::shared_ptr<scratcher::AsioScheduler> scheduler, std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent, EnsurePrivate)
+TradeCockpitWindow::TradeCockpitWindow(std::shared_ptr<scratcher::scheduler> scheduler,
+                                       std::shared_ptr<Config> config,
+                                       std::shared_ptr<SQLite::Database> db,
+                                       QWidget *parent, EnsurePrivate)
     : QMainWindow(parent)
     , ui(std::make_unique<Ui::TradeCockpitWindow>())
     , mScheduler(std::move(scheduler))
-    , mMarketApi(std::move(marketApi))
+    , mMarketData(scratcher::bybit::ByBitDataManager::Create(mScheduler, std::move(config), std::move(db)))
 {
     ui->setupUi(this);
 
-    // Create the market view
-    auto marketView = std::make_shared<scratcher::DataScratchWidget>(nullptr);
-    marketView->setMinimumSize(640, 480);
-    
-    // Initialize market data and controller
-    mMarketData = scratcher::bybit::ByBitDataManager::Create(mMarketApi, {});
-
-    // Create the initial panel with the market view
-    auto contentFrame= createGridCell(*ui->gridLayout, 0, 0);
-
-    contentFrame->setContent(marketView);
-    contentFrame.release();
-
+    // Create the initial panel with market view
     size_t panel_id = m_next_panel_id++;
-    mControllers[panel_id] = std::static_pointer_cast<scratcher::ViewController>(scratcher::MarketViewController::Create(panel_id, "BTCUSDC", marketView, mMarketData, std::move(scheduler)));
+    auto contentFrame = createGridCell(*ui->gridLayout, 0, 0);
+    contentFrame->setContent(createMarketView(panel_id));
+    contentFrame.release();
+}
+
+std::shared_ptr<QWidget> TradeCockpitWindow::createMarketView(size_t panel_id)
+{
+    // Create container widget with vertical layout
+    auto container = std::make_shared<QWidget>(nullptr);
+    auto layout = new QVBoxLayout(container.get());
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(4);
+
+    // Create instrument dropdown
+    auto instrumentDropBox = std::make_shared<scratcher::InstrumentDropBox>(container.get());
+
+    // Create market data widget
+    auto marketWidget = std::make_shared<scratcher::DataScratchWidget>(container.get());
+    marketWidget->setMinimumSize(640, 480);
+
+    // Arrange in layout
+    layout->addWidget(instrumentDropBox.get());
+    layout->addWidget(marketWidget.get(), 1);  // stretch factor 1
+
+    // Create and register controller
+    mControllers[panel_id] = scratcher::MarketViewController::Create(
+        panel_id, instrumentDropBox, marketWidget, mMarketData, mScheduler);
+
+    return container;
 }
 
 
-std::shared_ptr<TradeCockpitWindow> TradeCockpitWindow::Create(std::shared_ptr<scratcher::AsioScheduler> scheduler, std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent)
+std::shared_ptr<TradeCockpitWindow> TradeCockpitWindow::Create(std::shared_ptr<scratcher::scheduler> scheduler,
+                                                               std::shared_ptr<Config> config,
+                                                               std::shared_ptr<SQLite::Database> db,
+                                                               QWidget *parent)
 {
-    auto self = std::make_shared<TradeCockpitWindow>(scheduler, marketApi, parent, EnsurePrivate{});
+    auto self = std::make_shared<TradeCockpitWindow>(scheduler, std::move(config), std::move(db), parent, EnsurePrivate{});
     self->show();
 
     co_spawn(self->mScheduler->io(), coUpdate(self), boost::asio::detached);

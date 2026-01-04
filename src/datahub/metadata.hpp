@@ -22,7 +22,7 @@
 #include <tuple>
 #include <optional>
 
-namespace scratcher::dao {
+namespace datahub {
 
 // Glaze-based reflection utilities
 namespace detail {

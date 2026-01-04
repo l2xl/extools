@@ -25,6 +25,7 @@
 #include <boost/asio.hpp>
 
 #include "widget/scratch_widget.h"
+#include "widget/instrument_dropbox.h"
 #include "market_controller.hpp"
 
 QT_BEGIN_NAMESPACE
@@ -33,13 +34,17 @@ class TradeCockpitWindow;
 }
 QT_END_NAMESPACE
 
+class Config;
+
+namespace SQLite {
+class Database;
+}
 
 namespace scratcher {
 namespace bybit {
-class ByBitApi;
 class ByBitDataManager;
 }
-class AsioScheduler;
+class scheduler;
 class ViewController;
 }
 
@@ -50,9 +55,8 @@ class TradeCockpitWindow : public QMainWindow, public std::enable_shared_from_th
     Q_OBJECT
     std::unique_ptr<Ui::TradeCockpitWindow> ui;
 
-    std::shared_ptr<scratcher::AsioScheduler> mScheduler;
+    std::shared_ptr<scratcher::scheduler> mScheduler;
 
-    std::shared_ptr<scratcher::bybit::ByBitApi> mMarketApi;
     std::shared_ptr<scratcher::bybit::ByBitDataManager> mMarketData;
 
     // Panels management
@@ -67,15 +71,24 @@ private:
     std::unique_ptr<ContentFrameWidget> createTab(QTabWidget& tabWidget);
     std::unique_ptr<ContentFrameWidget> createPanel(QLayout& layout);
 
+    // View factory methods - create widget groups with linked controllers
+    std::shared_ptr<QWidget> createMarketView(size_t panel_id);
+
     static boost::asio::awaitable<void> coUpdate(std::weak_ptr<TradeCockpitWindow>);
 
     struct EnsurePrivate{};
 
 public:
-    TradeCockpitWindow(std::shared_ptr<scratcher::AsioScheduler>, std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent, EnsurePrivate);
+    TradeCockpitWindow(std::shared_ptr<scratcher::scheduler>,
+                       std::shared_ptr<Config> config,
+                       std::shared_ptr<SQLite::Database> db,
+                       QWidget *parent, EnsurePrivate);
     ~TradeCockpitWindow() override;
 
-    static std::shared_ptr<TradeCockpitWindow> Create(std::shared_ptr<scratcher::AsioScheduler>, std::shared_ptr<scratcher::bybit::ByBitApi> marketApi, QWidget *parent = nullptr);
+    static std::shared_ptr<TradeCockpitWindow> Create(std::shared_ptr<scratcher::scheduler>,
+                                                       std::shared_ptr<Config> config,
+                                                       std::shared_ptr<SQLite::Database> db,
+                                                       QWidget *parent = nullptr);
 
 
     inline bool isDarkMode() {

@@ -31,10 +31,10 @@ using namespace scratcher::bybit;
 TEST_CASE("http_query")
 {
     // Create scheduler
-    auto scheduler = AsioScheduler::Create(1);
+    auto scheduler = scheduler::create(1);
     
     // Create connection context
-    auto context = context::create(scheduler);
+    auto context = context::create(scheduler->io());
     
     // Create promise/future for synchronization
     std::promise<std::string> response_promise;
@@ -70,10 +70,10 @@ TEST_CASE("http_query")
 TEST_CASE("http_query bad host")
 {
     // Create scheduler
-    auto scheduler = AsioScheduler::Create(1);
+    auto scheduler = scheduler::create(1);
 
     // Create connection context
-    auto context = context::create(scheduler);
+    auto context = context::create(scheduler->io());
 
     // Create promise/future for synchronization
     std::promise<std::string> response_promise;
@@ -90,7 +90,7 @@ TEST_CASE("http_query bad host")
     };
 
     // Create http_query with invalid host
-    auto query = http_query::create(context, "https://api.bybot.com/v5/market/time", data_handler, error_handler);
+    auto query = http_query::create(context, "https://api.bybiiit.com/v5/market/time", data_handler, error_handler);
 
     // Execute request using invalid URL
     REQUIRE_NOTHROW((*query)());
@@ -107,10 +107,10 @@ TEST_CASE("http_query bad host")
 TEST_CASE("http_query_404")
 {
     // Create scheduler
-    auto scheduler = AsioScheduler::Create(1);
+    auto scheduler = scheduler::create(1);
 
     // Create connection context
-    auto context = context::create(scheduler);
+    auto context = context::create(scheduler->io());
 
     // Create promise/future for synchronization
     std::promise<std::string> response_promise;
@@ -149,10 +149,10 @@ TEST_CASE("http_query_404")
 TEST_CASE("http_query_bybit_trades")
 {
     // Create scheduler
-    auto scheduler = AsioScheduler::Create(1);
+    auto scheduler = scheduler::create(1);
 
     // Create connection context
-    auto context = context::create(scheduler);
+    auto context = context::create(scheduler->io());
 
     // Create promise/future for synchronization
     std::promise<std::string> response_promise;
