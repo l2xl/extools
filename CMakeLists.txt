@@ -49,10 +49,11 @@ find_package(Boost 1.83 REQUIRED COMPONENTS context system url)
 CPMAddPackage(
     NAME TBB
     GITHUB_REPOSITORY oneapi-src/oneTBB
-    GIT_TAG v2022.1.0
+    GIT_TAG v2022.3.0
     OPTIONS
         "TBB_TEST OFF"
         "TBB_EXAMPLES OFF"
+        "BUILD_SHARED_LIBS ON"
 )
 
 # Add SQLiteCpp with bundled SQLite sources
@@ -77,6 +78,63 @@ CPMAddPackage(
     OPTIONS
         "glaze_DEVELOPER_MODE OFF"
 )
+
+# Add SDL3 for ImGui windowing with proper Wayland support
+CPMAddPackage(
+    NAME SDL3
+    GITHUB_REPOSITORY libsdl-org/SDL
+    GIT_TAG main
+    OPTIONS
+        "SDL_TEST OFF"
+        "SDL_SHARED ON"
+        "SDL_STATIC OFF"
+        "SDL_X11_XTEST OFF"
+)
+
+# Add Dear ImGui
+CPMAddPackage(
+    NAME ImGui
+    GITHUB_REPOSITORY ocornut/imgui
+    GIT_TAG docking
+    DOWNLOAD_ONLY YES
+)
+
+if(ImGui_ADDED)
+    # Create ImGui library
+    add_library(imgui STATIC
+        ${ImGui_SOURCE_DIR}/imgui.cpp
+        ${ImGui_SOURCE_DIR}/imgui_draw.cpp
+        ${ImGui_SOURCE_DIR}/imgui_tables.cpp
+        ${ImGui_SOURCE_DIR}/imgui_widgets.cpp
+        ${ImGui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+        ${ImGui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
+    )
+    target_include_directories(imgui PUBLIC
+        ${ImGui_SOURCE_DIR}
+        ${ImGui_SOURCE_DIR}/backends
+    )
+    target_link_libraries(imgui PUBLIC SDL3::SDL3)
+    find_package(OpenGL REQUIRED)
+    target_link_libraries(imgui PUBLIC OpenGL::GL)
+endif()
+
+# Add ImPlot
+CPMAddPackage(
+    NAME implot
+    GITHUB_REPOSITORY epezent/implot
+    GIT_TAG v0.17
+    DOWNLOAD_ONLY YES
+)
+
+if(implot_ADDED)
+    # Create ImPlot library
+    add_library(implot STATIC
+        ${implot_SOURCE_DIR}/implot.cpp
+        ${implot_SOURCE_DIR}/implot_items.cpp
+    )
+    target_include_directories(implot PUBLIC ${implot_SOURCE_DIR})
+    target_link_libraries(implot PUBLIC imgui)
+endif()
 
 set(core_SOURCES
         src/common/currency.hpp
@@ -140,12 +198,35 @@ set(PROJECT_SOURCES
 
 qt_add_executable(exscratcher MANUAL_FINALIZATION ${PROJECT_SOURCES})
 
+# Add imscratcher executable (ImGui-based application)
+add_executable(imscratcher
+        src/imscratcher_main.cpp
+        src/app/imgui/main_window.cpp
+        src/app/imgui/main_window.hpp
+        src/app/imgui/ui_builder.hpp
+        src/app/imgui/ui_builder.cpp
+        src/app/imgui/system_theme.hpp
+        src/app/imgui/system_theme.cpp
+        src/cockpit/trade_cockpit.hpp
+        src/cockpit/trade_cockpit.cpp
+        src/config.hpp
+        src/config.cpp
+)
+
+# Find fontconfig for system font detection
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
+
+target_link_libraries(imscratcher PRIVATE imgui implot core glaze::glaze ${CMAKE_DL_LIBS} ${FONTCONFIG_LIBRARIES})
+target_include_directories(imscratcher PRIVATE ${FONTCONFIG_INCLUDE_DIRS})
+
 include_directories(
         contrib
         src
         src/common
         src/core
         src/app
+        src/cockpit
         src/data
         src/data/entities
         src/datahub
