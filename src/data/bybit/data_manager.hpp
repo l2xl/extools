@@ -26,58 +26,54 @@
 #include <boost/system/system_error.hpp>
 #include <boost/container/flat_map.hpp>
 
-#include <nlohmann/json.hpp>
-
 #include "data_provider.hpp"
 #include "currency.hpp"
+#include "scheduler.hpp"
 #include "bybit/entities/response.hpp"
 #include "bybit/entities/instrument.hpp"
 #include "bybit/entities/public_trade.hpp"
+#include "connect/connection_context.hpp"
+#include "connect/websocket.hpp"
+#include "datahub/data_provider.hpp"
 
+class Config;
 
 namespace scratcher {
 
 class Scratcher;
-class DbStorage;
 
 namespace bybit {
-struct ByBitSubscription;
-
-class ByBitApi;
-class SubscriptionTopic;
 
 class ByBitDataProvider: public IDataProvider, public std::enable_shared_from_this<ByBitDataProvider>
 {
     friend class ByBitDataManager;
 
-    const std::string m_symbol;
-    std::optional<InstrumentInfo> m_instrument_metadata;
+    std::optional<InstrumentInfo> m_instrument;
 
     pubtrade_cache_t m_pubtrade_cache;
 
     boost::container::flat_map<uint64_t, uint64_t> m_order_book_bids;
     boost::container::flat_map<uint64_t, uint64_t> m_order_book_asks;
 
-    void Setinstrument(InstrumentInfo&& instrument)
-    { m_instrument_metadata = std::move(instrument); }
+    void SetInstrument(InstrumentInfo&& instrument)
+    { m_instrument = std::move(instrument); }
 
     struct EnsurePrivate {};
 public:
-    ByBitDataProvider(std::string symbol, EnsurePrivate)
-        : m_symbol(std::move(symbol)) {}
+    ByBitDataProvider(EnsurePrivate) {}
 
-    static std::shared_ptr<ByBitDataProvider> Create(std::string symbol);
+    static std::shared_ptr<ByBitDataProvider> Create();
 
-    const std::string& Symbol() const override
-    { return m_symbol; }
+    std::optional<std::string> Symbol() const override
+    { return m_instrument ? m_instrument->symbol : std::optional<std::string>(); }
 
-    currency<uint64_t> PricePoint() const
+    currency<uint64_t> PricePoint() const override
     { return /*m_instrument_metadata ? m_instrument_metadata->price_point :*/ currency<uint64_t>(1, 2); }
 
     std::string GetInstrumentMetadata() const override;
 
     bool IsReadyHandleData() const override
-    { return m_instrument_metadata.has_value(); }
+    { return m_instrument.has_value(); }
 
     const pubtrade_cache_t& PublicTradeCache() const override
     { return m_pubtrade_cache; }
@@ -92,63 +88,62 @@ public:
 
 class ByBitDataManager: public IDataController, public std::enable_shared_from_this<ByBitDataManager>
 {
+public:
+    using instrument_provider_type = datahub::data_provider<InstrumentInfo, &InstrumentInfo::symbol>;
+
+private:
     static const std::string BYBIT;
-    std::shared_ptr<ByBitApi> mApi;
-    std::shared_ptr<ByBitSubscription> mSubscription;
+
+    // Core dependencies
+    std::shared_ptr<connect::context> m_context;
+    std::shared_ptr<SQLite::Database> m_db;
+    std::shared_ptr<Config> m_config;
+
+    std::shared_ptr<connect::websock_connection> m_public_stream;
+
+    std::shared_ptr<instrument_provider_type> m_instrument_provider;
 
     std::unordered_map<std::string, std::shared_ptr<ByBitDataProvider>> m_instrument_data;
-    std::shared_ptr<DbStorage> mDB;
 
-    std::list<std::function<void(const std::string&,  SourceType)>> m_instrument_handlers;
+    std::list<std::function<void(const std::string&, SourceType)>> m_instrument_handlers;
     std::list<std::function<void(const std::string&, SourceType)>> m_trade_handlers;
     std::list<std::function<void(const std::string&, SourceType)>> m_orderbook_handlers;
 
+    void HandleInstrumentsData(const std::deque<InstrumentInfo>& instruments);
+
+    void SetupInstrumentDataSource();
+
     struct EnsurePrivate {};
 public:
-    ByBitDataManager(std::shared_ptr<ByBitApi> api, std::shared_ptr<DbStorage> db, EnsurePrivate);
+    ByBitDataManager(std::shared_ptr<scheduler> scheduler,
+                     std::shared_ptr<Config> config,
+                     std::shared_ptr<SQLite::Database> db,
+                     EnsurePrivate);
     ~ByBitDataManager() override = default;
 
-    static std::shared_ptr<ByBitDataManager> Create(std::shared_ptr<ByBitApi> api, std::shared_ptr<DbStorage> db);
+    static std::shared_ptr<ByBitDataManager> Create(std::shared_ptr<scheduler> scheduler,
+                                                    std::shared_ptr<Config> config,
+                                                    std::shared_ptr<SQLite::Database> db);
 
     const std::string& Name() const override
     { return BYBIT; }
 
     std::shared_ptr<IDataProvider> GetDataProvider(const std::string& id) override;
 
-    template<typename Container>
-    requires std::same_as<typename Container::value_type, bybit::InstrumentInfo>
-    void ConsumeInstrumentsData(Container&& instruments)
-    {
-        std::clog << "Processing " << instruments.size() << " spot instruments" << std::endl;
-        
-        while (!instruments.empty()) {
-            auto instrument = std::move(instruments.back());
-            instruments.pop_back();
-            
-            // Create data provider if it doesn't exist
-            if (m_instrument_data.find(instrument.symbol) == m_instrument_data.end()) {
-                m_instrument_data[instrument.symbol] = ByBitDataProvider::Create(instrument.symbol);
-            }
-            
-            // Move the instrument data to the provider
-            m_instrument_data[instrument.symbol]->Setinstrument(std::move(instrument));
-            
-            // Call handlers
-            for (const auto &h: m_instrument_handlers)
-                h(instrument.symbol, SourceType::MARKET);
-        }
-    }
+    void HandleError(std::exception_ptr eptr);
 
-    void HandlePublicTradeSnapshot(const ListResult<PublicTrade>& data);
-
-    void HandleSubscriptionData(const SubscriptionTopic& topic, const std::string& type, const glz::json_t& data);
-    void HandleError(boost::system::error_code ec);
-
+    // Per-symbol handlers
     void AddInsctrumentDataHandler(std::function<void(const std::string&, SourceType)> h) override;
+
     void AddNewTradeHandler(std::function<void(const std::string&, SourceType)> h) override
     { m_trade_handlers.emplace_back(std::move(h)); }
+
     void AddOrderBookUpdateHandler(std::function<void(const std::string&, SourceType)> h) override
     { m_orderbook_handlers.emplace_back(std::move(h)); }
+
+    // Subscribe to full instrument list updates
+    void SubscribeInstrumentList(std::function<void(const std::deque<InstrumentInfo>&)> handler)
+    { m_instrument_provider->subscribe(std::move(handler)); }
 };
 
 } // scratcher::bybit

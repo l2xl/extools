@@ -38,7 +38,7 @@ struct IDataProvider
 
     virtual ~IDataProvider() = default;
 
-    virtual const std::string& Symbol() const = 0;
+    virtual std::optional<std::string> Symbol() const = 0;
     virtual std::string GetInstrumentMetadata() const = 0;
 
     virtual bool IsReadyHandleData() const = 0;

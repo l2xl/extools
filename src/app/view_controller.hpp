@@ -25,6 +25,8 @@ protected:
         : m_view_id(view_id)
     {}
 public:
+    virtual ~ViewController() = default;
+
     size_t getViewId() const
     { return m_view_id; }
 

@@ -15,6 +15,8 @@
 #include "config.hpp"
 
 #include <QApplication>
+#include <QStyleHints>
+#include <QPalette>
 
 #include "scheduler.hpp"
 #include <SQLiteCpp/SQLiteCpp.h>
@@ -32,7 +34,15 @@ namespace SQLite {
 int main(int argc, char *argv[])
 {
     try {
+        // Set platform theme for system integration (before QApplication)
+        if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORMTHEME")) {
+            qputenv("QT_QPA_PLATFORMTHEME", "gtk3");
+        }
+
         QApplication a(argc, argv);
+
+        // Fusion style respects dark color scheme properly
+        a.setStyle("Fusion");
 
         auto config = std::make_shared<Config>(argc, argv);
 

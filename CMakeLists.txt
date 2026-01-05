@@ -96,8 +96,8 @@ set(core_SOURCES
         src/data/entities/trade.hpp
         # DEPRECATED: src/data/bybit/stream.cpp - replaced by websock_connection + data_sink
         # DEPRECATED: src/data/bybit/stream.hpp - replaced by websock_connection + data_sink
-        # REMOVED TEMPORARILY src/data/bybit/data_manager.cpp
-        # REMOVED TEMPORARILY src/data/bybit/data_manager.hpp
+        src/data/bybit/data_manager.cpp
+        src/data/bybit/data_manager.hpp
         src/data/bybit/error.hpp
         # DEPRECATED: src/data/bybit/subscription.hpp - absorbed into data_sink pattern
         src/connect/connection_context.hpp
@@ -112,6 +112,7 @@ set(core_SOURCES
         src/datahub/query_builder.cpp
         src/datahub/metadata.hpp
         src/datahub/data_sink.hpp
+        src/datahub/data_provider.hpp
 )
 
 add_library(core STATIC ${core_SOURCES})

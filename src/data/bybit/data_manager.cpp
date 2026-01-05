@@ -12,237 +12,97 @@
 // -----END PGP PUBLIC KEY BLOCK-----
 
 #include <iostream>
+#include <sstream>
 
 #include <glaze/glaze.hpp>
 
 #include "data_manager.hpp"
-#include "bybit.hpp"
-#include "db_storage.hpp"
-#include "stream.hpp"
-#include "subscription.hpp"
+#include "config.hpp"
+#include "connect/http_query.hpp"
 #include "common.hpp"
 
 namespace scratcher::bybit {
+namespace {
+    const std::string STREAM_PUBLIC_SPOT = "/v5/public/spot";
+    const std::string API_INSTRUMENTS = "/v5/market/instruments-info?category=spot";
+
+    std::string ping_message(size_t counter)
+    {
+        std::ostringstream buf;
+        buf << R"({"req_id":")" << counter << R"(","op":"ping"})" ;
+        return buf.str();
+    }
+}
+
+
+
 const std::string ByBitDataManager::BYBIT = "ByBit";
 
-std::shared_ptr<ByBitDataProvider> ByBitDataProvider::Create(std::string symbol)
+std::shared_ptr<ByBitDataProvider> ByBitDataProvider::Create()
 {
-    return std::make_shared<ByBitDataProvider>(move(symbol), EnsurePrivate());
+    return std::make_shared<ByBitDataProvider>(EnsurePrivate());
 }
 
 std::string ByBitDataProvider::GetInstrumentMetadata() const
 {
-    if (!m_instrument_metadata.has_value()) {
+    if (!m_instrument.has_value()) {
         return "{}";
     }
 
-    return glz::write_json(*m_instrument_metadata).value();
+    return glz::write_json(*m_instrument).value();
 }
 
-ByBitDataManager::ByBitDataManager(std::shared_ptr<ByBitApi> api, std::shared_ptr<DbStorage> db, EnsurePrivate)
-    : mApi(move(api)), mDB(move(db))
+ByBitDataManager::ByBitDataManager(std::shared_ptr<scheduler> scheduler, std::shared_ptr<Config> config, std::shared_ptr<SQLite::Database> db, EnsurePrivate)
+    : m_context(connect::context::create(scheduler->io()))
+    , m_db(std::move(db))
+    , m_config(std::move(config))
 {
+    std::string ws_url = "wss://" + m_config->StreamHost() + ":" + m_config->StreamPort() + STREAM_PUBLIC_SPOT;
+    m_public_stream = connect::websock_connection::create(m_context, ws_url, [](auto) {}, [](std::exception_ptr){});
+    m_public_stream->set_heartbeat(std::chrono::seconds(20), ping_message);
 }
 
-std::shared_ptr<ByBitDataManager> ByBitDataManager::Create(std::shared_ptr<ByBitApi> api, std::shared_ptr<DbStorage> db)
+std::shared_ptr<ByBitDataManager> ByBitDataManager::Create(std::shared_ptr<scheduler> scheduler, std::shared_ptr<Config> config, std::shared_ptr<SQLite::Database> db)
 {
-    auto collector = std::make_shared<ByBitDataManager>(api, db, EnsurePrivate());
-    //db->BindProvider(collector);
+    auto self = std::make_shared<ByBitDataManager>(scheduler, std::move(config), std::move(db), EnsurePrivate());
 
-    // First fetch all spot instruments data
-    api->FetchCommonData(collector);
+    // Create instrument provider (RAII: creates DB table and loads cache)
+    self->m_instrument_provider = instrument_provider_type::create(self->m_db);
 
-    //    collector->mSubscription = api->Subscribe(symbol, collector);
-    return collector;
+    // Subscribe to instrument updates
+    std::weak_ptr<ByBitDataManager> ref = self;
+    self->m_instrument_provider->subscribe([ref](const std::deque<InstrumentInfo>& instruments) {
+        if (auto self = ref.lock()) {
+            self->HandleInstrumentsData(instruments);
+        }
+    });
+
+    // Setup data sources - HTTP query wiring
+    self->SetupInstrumentDataSource();
+
+    return self;
 }
 
 
 std::shared_ptr<IDataProvider> ByBitDataManager::GetDataProvider(const std::string &symbol)
 {
     auto it = m_instrument_data.find(symbol);
+
+    if (it == m_instrument_data.end()) {
+        //TODO: subscribe and create the data provider
+    }
+
     return it != m_instrument_data.end() ? it->second : nullptr;
 }
 
 
-void ByBitDataManager::HandlePublicTradeSnapshot(const ListResult<PublicTrade> &data)
+void ByBitDataManager::HandleError(std::exception_ptr eptr)
 {
-    // if (data["category"] != "spot") throw WrongServerData("Wrong InstrumentsInfo category: " + data["category"].get<std::string>());
-    // if (!data["list"].is_array())  throw WrongServerData("No or wrong InstrumentsInfo list");
-    //
-    // std::clog << "Trade snapshot" << std::endl;
-    //
-    // std::deque<Trade> trades;
-    //
-    // for (const auto& t: data["list"]) {
-    //     if (t["symbol"] != m_symbol) continue;
-    //
-    //     if (!(t.contains("execId") && t.contains("time") && t.contains("side") && t.contains("price") && t.contains("size")))  throw std::invalid_argument("Invalid data");
-    //
-    //     std::string id = t["execId"].get<std::string>();
-    //     std::string side_str = t["side"].get<std::string>();
-    //     TradeSide side;
-    //     if (side_str == "Sell")
-    //         side = TradeSide::SELL;
-    //     else if (side_str == "Buy")
-    //         side = TradeSide::BUY;
-    //     else throw std::invalid_argument("Invalid trade side: " + side_str);
-    //
-    //     time trade_time(milliseconds(t["time"].get<long>()));
-    //
-    //     currency<uint64_t> price = m_instrument_metadata->m_price_point;
-    //     price.parse(t["price"].get<std::string>());
-    //
-    //     currency<uint64_t> value = m_instrument_metadata->m_volume_point;
-    //     value.parse(t["size"].get<std::string>());
-    //
-    //     trades.emplace_back(move(id), trade_time, price.raw(), value.raw(), side);
-    //
-    //     std::clog << "trade: " << id << " - " << side_str << ": " << trade_time << ", price (points): " << price.raw() << ", volume (points): " << value.raw() << std::endl;
-    // }
-    //
-    // std::sort(trades.begin(), trades.end(), [](const Trade& l, const Trade& r){ return std::stoll(l.id) > std::stoull(r.id); });
-    //
-    // for ( ; !trades.empty(); trades.pop_front()) {
-    //     if (!m_pubtrade_cache.empty()) {
-    //         if (std::stoull(m_pubtrade_cache.front().id) > std::stoull(trades.front().id)) {
-    //             m_pubtrade_cache.
-    //         }
-    //     }
-    //
-    // }
-}
-
-
-void ByBitDataManager::HandleSubscriptionData(const SubscriptionTopic &topic, const std::string &type,
-                                              const glz::json_t &data)
-{
-    if (auto it = m_instrument_data.find(std::string(*topic.Symbol())); it != m_instrument_data.end()) {
-        std::shared_ptr<ByBitDataProvider> dataProvider = it->second;
-
-        if (!dataProvider->IsReadyHandleData()) throw std::runtime_error("Instrument configuration is not ready");
-
-        if (topic.Title() == "publicTrade") {
-            if (!data.is_array()) throw std::invalid_argument("Invalid public trade data");
-            if (type != "snapshot") throw std::invalid_argument("Unknown public trade message type: " + type);
-            for (const auto &t: data.get<glz::json_t::array_t>()) {
-                if (!(t.contains("S") && t.contains("T") && t.contains("i") && t.contains("p") && t.contains("v")))
-                    throw std::invalid_argument("Invalid data");
-                if (t.contains("s") && t["s"].get<std::string>() != dataProvider->Symbol()) throw std::invalid_argument(
-                    "Trade symbol mismatch");
-
-                std::string id = t["i"].get<std::string>();
-                std::string side_str = t["S"].get<std::string>();
-                const data::OrderSide &side = data::OrderSide::select(side_str);
-
-                //TODO: uncomment and fix
-
-                //time trade_time(milliseconds(t["T"].get<int64_t>()));
-
-                // currency<uint64_t> price = dataProvider->m_instrument_metadata->price_point;
-                // price.parse(t["p"].get<std::string>());
-                //
-                // currency<uint64_t> value = dataProvider->m_instrument_metadata->volume_point;
-                // value.parse(t["v"].get<std::string>());
-
-                // std::clog << "trade: " << id << " - " << side_str << ": " << trade_time << ", price (points): " << price.raw() << ", volume (points): " << value.raw() << std::endl;
-                //
-                // dataProvider->m_pubtrade_cache.emplace_back(move(id), trade_time, price.raw(), value.raw(), side);
-            }
-            for (const auto &h: m_trade_handlers) h(dataProvider->Symbol(), SourceType::MARKET);
-        } else if (topic.Title() == "orderbook") {
-            if (!(data.is_object() && data.contains("b") && data.contains("a"))) throw std::invalid_argument(
-                "Invalid order book data");
-            if (!(data["b"].is_array() && data["a"].is_array())) throw std::invalid_argument(
-                "Invalid order book bids/asks");
-
-            //std::clog << data.dump() << std::endl;
-
-            if (type == "snapshot") {
-                dataProvider->m_order_book_bids.clear();
-                dataProvider->m_order_book_asks.clear();
-
-                for (const auto &bid: data["b"].get<glz::json_t::array_t>()) {
-                    if (!bid.is_array()) throw std::invalid_argument("Wrong order book bid entry");
-                    const auto &bid_array = bid.get<glz::json_t::array_t>();
-                    if (bid_array.size() != 2) throw std::invalid_argument("Wrong order book bid entry");
-
-                    //TODO: uncomment and fix
-
-                    // currency<uint64_t> price = dataProvider->m_instrument_metadata->price_point;
-                    // price.parse(bid_array[0].get<std::string>());
-                    //
-                    // currency<uint64_t> volume = dataProvider->m_instrument_metadata->volume_point;
-                    // volume.parse(bid_array[1].get<std::string>());
-                    //
-                    // dataProvider->m_order_book_bids.emplace_hint(dataProvider->m_order_book_bids.begin(), price.raw(), volume.raw());
-                }
-                for (const auto &ask: data["a"].get<glz::json_t::array_t>()) {
-                    if (!ask.is_array()) throw std::invalid_argument("Wrong order book ask entry");
-                    const auto &ask_array = ask.get<glz::json_t::array_t>();
-                    if (ask_array.size() != 2) throw std::invalid_argument("Wrong order book ask entry");
-
-                    //TODO: uncomment and fix
-
-                    // currency<uint64_t> price = dataProvider->m_instrument_metadata->price_point;
-                    // price.parse(ask_array[0].get<std::string>());
-                    //
-                    // currency<uint64_t> volume = dataProvider->m_instrument_metadata->volume_point;
-                    // volume.parse(ask_array[1].get<std::string>());
-                    //
-                    // dataProvider->m_order_book_asks.emplace_hint(dataProvider->m_order_book_asks.end(), price.raw(), volume.raw());
-                }
-            } else if (type == "delta") {
-                for (const auto &bid: data["b"].get<glz::json_t::array_t>()) {
-                    if (!bid.is_array()) throw std::invalid_argument("Wrong order book bid entry");
-                    const auto &bid_array = bid.get<glz::json_t::array_t>();
-                    if (bid_array.size() != 2) throw std::invalid_argument("Wrong order book bid entry");
-
-                    //TODO: uncomment and fix
-
-                    // currency<uint64_t> price = dataProvider->m_instrument_metadata->price_point;
-                    // price.parse(bid_array[0].get<std::string>());
-                    //
-                    // currency<uint64_t> volume = dataProvider->m_instrument_metadata->volume_point;
-                    // volume.parse(bid_array[1].get<std::string>());
-                    //
-                    // if (volume.raw() == 0)
-                    //     dataProvider->m_order_book_bids.erase(price.raw());
-                    // else
-                    //     dataProvider->m_order_book_bids[price.raw()] = volume.raw();
-                }
-                for (const auto &ask: data["a"].get<glz::json_t::array_t>()) {
-                    if (!ask.is_array()) throw std::invalid_argument("Wrong order book ask entry");
-                    const auto &ask_array = ask.get<glz::json_t::array_t>();
-                    if (ask_array.size() != 2) throw std::invalid_argument("Wrong order book ask entry");
-
-                    //TODO: uncomment and fix
-
-                    // currency<uint64_t> price = dataProvider->m_instrument_metadata->price_point;
-                    // price.parse(ask_array[0].get<std::string>());
-                    //
-                    // currency<uint64_t> volume = dataProvider->m_instrument_metadata->volume_point;
-                    // volume.parse(ask_array[1].get<std::string>());
-                    //
-                    // if (volume.raw() == 0)
-                    //     dataProvider->m_order_book_asks.erase(price.raw());
-                    // else
-                    //     dataProvider->m_order_book_asks[price.raw()] = volume.raw();
-                }
-            } else throw std::invalid_argument("Unknown order book data type: " + type);
-
-            for (const auto &h: m_orderbook_handlers) h(dataProvider->Symbol(), SourceType::MARKET);
-        }
-    } else {
-        throw std::invalid_argument("Instrument symbol does not match: " + std::string(*topic.Symbol()));
+    try {
+        std::rethrow_exception(eptr);
+    } catch (const std::exception& ex) {
+        std::cerr << "Instrument data source HTTP error: " << ex.what() << std::endl;
     }
-}
-
-void ByBitDataManager::HandleError(boost::system::error_code ec)
-{
-    std::cerr << "websock error: " << ec.message() << std::endl;
-
-    // mApi->Unsubscribe(m_symbol);
-    // mApi->Subscribe(m_symbol, shared_from_this());
 }
 
 void ByBitDataManager::AddInsctrumentDataHandler(std::function<void(const std::string &, SourceType)> h)
@@ -255,4 +115,59 @@ void ByBitDataManager::AddInsctrumentDataHandler(std::function<void(const std::s
             h(symbol, SourceType::CACHE);
     }
 }
+
+
+void ByBitDataManager::HandleInstrumentsData(const std::deque<InstrumentInfo>& instruments)
+{
+    std::clog << "onInstrumentsData: " << instruments.size() << " instruments" << std::endl;
+
+    // Update providers map (per-symbol)
+    for (const auto& instrument : instruments) {
+        const std::string& symbol = instrument.symbol;
+
+        if (m_instrument_data.find(symbol) == m_instrument_data.end()) {
+            m_instrument_data[symbol] = ByBitDataProvider::Create();
+        }
+        m_instrument_data[symbol]->SetInstrument(InstrumentInfo(instrument));
+
+        // Call per-symbol handlers
+        for (const auto& h : m_instrument_handlers) {
+            h(symbol, SourceType::MARKET);
+        }
+    }
+}
+
+void ByBitDataManager::SetupInstrumentDataSource()
+{
+    std::string url = "https://" + m_config->HttpHost() + ":" + m_config->HttpPort() + API_INSTRUMENTS;
+
+    std::clog << "setupInstrumentDataSource: " << url << std::endl;
+
+    auto entity_acceptor = m_instrument_provider->data_acceptor<std::deque<InstrumentInfoAPI>>();
+
+    auto resp_adapter = datahub::make_data_adapter<ApiResponse<ListResult<InstrumentInfoAPI>>>(
+        [entity_acceptor](ApiResponse<ListResult<InstrumentInfoAPI>>&& response) mutable {
+            std::clog << "Received " << response.result.list.size() << " instruments from server" << std::endl;
+
+            entity_acceptor(std::move(response.result.list));
+        }
+    );
+
+    auto dispatcher = datahub::make_data_dispatcher(m_context->io().get_executor(), std::move(resp_adapter));
+
+    auto ref = weak_from_this();
+
+    auto query = connect::http_query::create(
+        m_context,
+        url,
+        std::move(dispatcher),
+        [ref](std::exception_ptr e) {
+            if (auto self = ref.lock())
+                self->HandleError(e);
+        }
+    );
+
+    (*query)();  // Execute the query
+}
+
 } // scratcher::bybit

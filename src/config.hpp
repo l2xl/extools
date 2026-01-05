@@ -1,16 +1,23 @@
 // Scratcher project
 // Copyright (c) 2024-2025 l2xl (l2xl/at/proton.me)
-// Distributed under the MIT software license, see the accompanying
-// file LICENSE or https://opensource.org/license/mit
+// Distributed under the Intellectual Property Reserve License (IPRL)
+// -----BEGIN PGP PUBLIC KEY BLOCK-----
+//
+// mDMEYdxcVRYJKwYBBAHaRw8BAQdAfacBVThCP5QDPEgSbSIudtpJS4Y4Imm5dzaN
+// lM1HTem0IkwyIFhsIChsMnhsKSA8bDJ4bEBwcm90b25tYWlsLmNvbT6IkAQTFggA
+// OBYhBKRCfUyWnduCkisNl+WRcOaCK79JBQJh3FxVAhsDBQsJCAcCBhUKCQgLAgQW
+// AgMBAh4BAheAAAoJEOWRcOaCK79JDl8A/0/AjYVbAURZJXP3tHRgZyYyN9txT6mW
+// 0bYCcOf0rZ4NAQDoFX4dytPDvcjV7ovSQJ6dzvIoaRbKWGbHRCufrm5QBA==
+// =KKu7
+// -----END PGP PUBLIC KEY BLOCK-----
 
 
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
 #include "cli11/CLI11.hpp"
-#include "bybit.hpp"
 
-class Config : public scratcher::bybit::Config{
+class Config {
     CLI::App mApp;
 
     size_t mVerbose;
@@ -32,11 +39,11 @@ public:
     bool Trace() const {return mTrace; }
     const std::string& DataDir() const { return mDataDir; }
 
-    const std::string& HttpHost() const override { return m_http_host; }
-    const std::string& HttpPort() const override { return m_http_port; }
+    const std::string& HttpHost() const { return m_http_host; }
+    const std::string& HttpPort() const { return m_http_port; }
 
-    const std::string& StreamHost() const override { return m_stream_host; }
-    const std::string& StreamPort() const override { return m_stream_port; }
+    const std::string& StreamHost() const { return m_stream_host; }
+    const std::string& StreamPort() const { return m_stream_port; }
 };
 
 

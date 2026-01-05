@@ -27,107 +27,150 @@
 namespace scratcher {
 
 
-MarketViewController::MarketViewController(size_t id, std::string symbol, std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataController> dataController, std::shared_ptr<AsioScheduler> scheduler, EnsurePrivate)
-    : ViewController(id), m_symbol(move(symbol)), mWidget(widget), mDataController(dataController)
+MarketViewController::MarketViewController(size_t id,
+                                           std::shared_ptr<InstrumentDropBox> instrumentDropBox,
+                                           std::shared_ptr<DataScratchWidget> marketWidget,
+                                           std::shared_ptr<IDataController> dataController,
+                                           std::shared_ptr<scheduler> scheduler,
+                                           EnsurePrivate)
+    : ViewController(id)
+    , mInstrumentDropBox(instrumentDropBox)
+    , mMarketWidget(marketWidget)
+    , mDataController(std::move(dataController))
+    , mScheduler(std::move(scheduler))
     , m_end_gap(minutes(10))
     , m_trade_group_time(seconds(60))
 {
     auto now = std::chrono::utc_clock::now().time_since_epoch();
     uint64_t start = std::chrono::duration_cast<milliseconds>(now - minutes(50)).count();
-
-    QDateTime qstart;
-    qstart.setMSecsSinceEpoch(start);
-
-    std::clog << "Window start TS: " << std::string(qstart.toString(widget->locale().dateFormat(QLocale::ShortFormat)).toUtf8().data()) << std::endl;
-
     uint64_t length = std::chrono::duration_cast<milliseconds>(minutes(60)).count();
 
-    widget->DataViewRectChanged(Rectangle{start, std::numeric_limits<uint64_t>::max(), length, 1});
-
+    marketWidget->DataViewRectChanged(Rectangle{start, std::numeric_limits<uint64_t>::max(), length, 1});
 }
 
-std::shared_ptr<MarketViewController> MarketViewController::Create(size_t id, std::string symbol, std::shared_ptr<DataScratchWidget> widget, std::shared_ptr<IDataController> dataController, std::shared_ptr<AsioScheduler> scheduler)
+std::shared_ptr<MarketViewController> MarketViewController::Create(
+    size_t id,
+    std::shared_ptr<InstrumentDropBox> instrumentDropBox,
+    std::shared_ptr<DataScratchWidget> marketWidget,
+    std::shared_ptr<IDataController> dataController,
+    std::shared_ptr<scheduler> scheduler)
 {
-    auto res = std::make_shared<MarketViewController>(id, move(symbol), widget, move(dataController), move(scheduler), EnsurePrivate{});
+    auto res = std::make_shared<MarketViewController>(
+        id, instrumentDropBox, marketWidget,
+        std::move(dataController), std::move(scheduler), EnsurePrivate{});
 
-    widget->AddScratcher(std::make_shared<TimeRuler>());
-    widget->AddScratcher(std::make_shared<Margin>(0.05));
+    // Setup base scratchers for market widget
+    marketWidget->AddScratcher(std::make_shared<TimeRuler>());
+    marketWidget->AddScratcher(std::make_shared<Margin>(0.05));
 
     std::weak_ptr ref = res;
 
-    widget->AddDataViewChangeListener([ref](DataScratchWidget &w) {
+    // Wire InstrumentDropBox selection to controller
+    connect(instrumentDropBox.get(), &InstrumentDropBox::instrumentSelected,
+            res.get(), &MarketViewController::onInstrumentSelected);
+
+    // Listen for market widget view changes
+    marketWidget->AddDataViewChangeListener([ref](DataScratchWidget &w) {
         if (auto self = ref.lock()) {
             const auto& dataView = w.GetDataViewRect();
             self->OnDataViewChange(dataView.x_start(), dataView.x_end());
         }
     });
 
+    // Handle instrument data ready (metadata loaded)
     res->mDataController->AddInsctrumentDataHandler([ref](const std::string& symbol, SourceType source) {
         if (auto self = ref.lock()) {
-            if (self->m_symbol == symbol) {
-                if (auto widget = self->mWidget.lock()) {
-                    auto dataProvider = self->mDataController->GetDataProvider(self->m_symbol);
-                    if (dataProvider->IsReadyHandleData()) {
-                        if (self->mPriceRuler) widget->RemoveScratcher(self->mPriceRuler);
-                        if (self->mPriceIndicator) widget->RemoveScratcher(self->mPriceIndicator);
-                        if (self->mQuoteGraph) widget->RemoveScratcher(self->mQuoteGraph);
-
-                        widget->AddScratcher(self->mPriceRuler = std::make_shared<PriceRuler>(dataProvider->PricePoint()));
-                        widget->AddScratcher(self->mPriceIndicator = std::make_shared<PriceIndicator>(dataProvider));
-                        widget->AddQuoteScratcher(self->mQuoteGraph = std::make_shared<QuoteScratcher>(dataProvider, self->m_trade_group_time));
-
-                        widget->update();
-                    }
-                }
+            if (self->m_symbol && *self->m_symbol == symbol) {
+                self->setupMarketScratchers();
             }
         }
     });
+
+    // Handle new trade data
     res->mDataController->AddNewTradeHandler([ref](const std::string& symbol, SourceType source) {
         if (auto self = ref.lock()) {
-            self->OnMarketDataUpdate();
+            if (self->m_symbol && *self->m_symbol == symbol) {
+                self->OnMarketDataUpdate();
+            }
         }
     });
 
-    // if (widget->isVisible())
-    //     widget->update();
+    // Wire controller signal to market widget
+    connect(res.get(), &MarketViewController::UpdateDataViewRect,
+            marketWidget.get(), &DataScratchWidget::DataViewRectChanged,
+            Qt::ConnectionType::QueuedConnection);
 
-    connect(res.get(), &MarketViewController::UpdateDataViewRect, widget.get(), &DataScratchWidget::DataViewRectChanged, Qt::ConnectionType::QueuedConnection);
     return res;
+}
+
+void MarketViewController::onInstrumentSelected(instrument_ptr instrument)
+{
+    if (!instrument) return;
+
+    m_instrument = std::move(instrument);
+    m_symbol = m_instrument->symbol;
+
+    std::clog << "Instrument selected: " << *m_symbol << std::endl;
+
+    // Clear existing scratchers for previous symbol
+    if (auto widget = mMarketWidget.lock()) {
+        if (mPriceRuler) widget->RemoveScratcher(mPriceRuler);
+        if (mPriceIndicator) widget->RemoveScratcher(mPriceIndicator);
+        if (mQuoteGraph) widget->RemoveScratcher(mQuoteGraph);
+        mPriceRuler.reset();
+        mPriceIndicator.reset();
+        mQuoteGraph.reset();
+    }
+
+    // Check if data provider already has data ready
+    auto dataProvider = mDataController->GetDataProvider(*m_symbol);
+    if (dataProvider && dataProvider->IsReadyHandleData()) {
+        setupMarketScratchers();
+    }
+    // Otherwise, wait for AddInsctrumentDataHandler callback
+}
+
+void MarketViewController::setupMarketScratchers()
+{
+    if (!m_symbol) return;
+
+    auto widget = mMarketWidget.lock();
+    if (!widget) return;
+
+    auto dataProvider = mDataController->GetDataProvider(*m_symbol);
+    if (!dataProvider || !dataProvider->IsReadyHandleData()) return;
+
+    // Remove old scratchers if any
+    if (mPriceRuler) widget->RemoveScratcher(mPriceRuler);
+    if (mPriceIndicator) widget->RemoveScratcher(mPriceIndicator);
+    if (mQuoteGraph) widget->RemoveScratcher(mQuoteGraph);
+
+    // Add new scratchers for current symbol
+    widget->AddScratcher(mPriceRuler = std::make_shared<PriceRuler>(dataProvider->PricePoint()));
+    widget->AddScratcher(mPriceIndicator = std::make_shared<PriceIndicator>(dataProvider));
+    widget->AddQuoteScratcher(mQuoteGraph = std::make_shared<QuoteScratcher>(dataProvider, m_trade_group_time));
+
+    widget->update();
 }
 
 void MarketViewController::OnDataViewChange(uint64_t view_start, uint64_t view_end)
 {
-    if (auto w = mWidget.lock()) {
+    if (auto w = mMarketWidget.lock()) {
         std::clog << "OnDataViewChange(" << w->GetDataViewRect().x_start() << ", " << w->GetDataViewRect().x_end() << ")" << std::endl;
-
-        // auto dataProvider = mDataController->GetDataProvider(m_symbol);
-        //
-        // if (!dataProvider->PublicTradeCache().empty()) {
-        //     view_end = duration_cast<milliseconds>(dataProvider->PublicTradeCache().front().trade_time.time_since_epoch()).count();
-        // }
-        //
-        // if (view_start < view_end) {
-        //
-        // }
     }
 }
 
 void MarketViewController::OnMarketDataUpdate()
 {
-    // auto last_ts = duration_cast<milliseconds>(m_last_trade_time.time_since_epoch()).count();
-    // if (last_ts < widget->GetDataViewRect().x_end()) {
-    //     Rectangle rect = widget->GetDataViewRect();
-        // {
-        //     std::unique_lock lock(mDataProvider->PublicTradeMutex());
-        //     m_last_trade_time = mDataProvider->PublicTradeCache().back().trade_time;
-        // }
-        // rect.x += duration_cast<milliseconds>(m_last_trade_time.time_since_epoch()).count() - last_ts;
-
+    // Trigger widget update when new trade data arrives
+    if (auto widget = mMarketWidget.lock()) {
+        widget->update();
+    }
 }
 
 void MarketViewController::Update()
 {
-    if (auto widget = mWidget.lock()) {
+    if (auto widget = mMarketWidget.lock()) {
         time_point now = std::chrono::utc_clock::now();
         Rectangle rect = widget->GetDataViewRect();
 
@@ -139,7 +182,7 @@ void MarketViewController::Update()
                 s->CalculatePaint(rect);
             }
 
-            UpdateDataViewRect(rect);
+            emit UpdateDataViewRect(rect);
         }
     }
 }

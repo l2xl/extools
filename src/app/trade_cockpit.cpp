@@ -20,6 +20,7 @@
 
 #include "market_controller.hpp"
 #include "content_frame.h"
+#include "instrument_dropbox.h"
 
 #include "config.hpp"
 #include "bybit/data_manager.hpp"
@@ -73,8 +74,18 @@ std::shared_ptr<QWidget> TradeCockpitWindow::createMarketView(size_t panel_id)
     layout->addWidget(marketWidget.get(), 1);  // stretch factor 1
 
     // Create and register controller
-    mControllers[panel_id] = scratcher::MarketViewController::Create(
-        panel_id, instrumentDropBox, marketWidget, mMarketData, mScheduler);
+    mControllers[panel_id] = scratcher::MarketViewController::Create(panel_id, instrumentDropBox, marketWidget, mMarketData, mScheduler);
+
+    // Subscribe to instrument updates and wire to dropbox
+    std::weak_ptr<scratcher::InstrumentDropBox> dropboxRef = instrumentDropBox;
+    mMarketData->SubscribeInstrumentList([dropboxRef](const std::deque<scratcher::bybit::InstrumentInfo>& instruments) {
+        if (auto dropbox = dropboxRef.lock()) {
+            auto list = std::make_shared<std::deque<scratcher::bybit::InstrumentInfo>>(instruments);
+            QMetaObject::invokeMethod(dropbox.get(), [dropbox, list]() {
+                dropbox->setInstruments(list);
+            }, Qt::QueuedConnection);
+        }
+    });
 
     return container;
 }

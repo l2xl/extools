@@ -12,11 +12,10 @@
 // -----END PGP PUBLIC KEY BLOCK-----
 
 #include <memory>
-#include <future>
 #include <chrono>
 #include <deque>
-#include <atomic>
 #include <iostream>
+#include <thread>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -55,48 +54,26 @@ static DataModelTestFixture fixture;
 
 TEST_CASE("Write first", "[bybit][instruments]")
 {
-    std::atomic<bool> data_received{false};
-    std::atomic<int> callback_count{0};
-    std::promise<void> completion_promise;
-    auto completion_future = completion_promise.get_future();
+    auto dao = data_model<bybit::InstrumentInfo, &bybit::InstrumentInfo::symbol>::create(fixture.db);
 
-    auto btc_usdc_sink = make_data_sink<bybit::InstrumentInfo, &bybit::InstrumentInfo::symbol>
-        (
-            fixture.db,
-            [&](std::deque<bybit::InstrumentInfo>&& entities, DataSource source){
-                // Handle received trades from server (first run)
-                std::cout << "Data sink callback called with " << entities.size() << " entities from "
-                          << (source == DataSource::CACHE ? "CACHE" : "SERVER") << std::endl;
-                ++callback_count;
-                if (!entities.empty()) {
-                    data_received = true;
-                    completion_promise.set_value();
-                } else {
-                    std::cout << "Data sink received empty instrument list" << std::endl;
-                }
-            },
-            [&](std::exception_ptr e) {
-                if (e) {
-                    std::cout << "✗ Data sink error callback invoked" << std::endl;
-                    try {
-                        completion_promise.set_exception(e);
-                    } catch (...) {
-                        // Promise already set, ignore
-                    }
-                }
-            }
-        );
+    // Container to collect results
+    std::deque<bybit::InstrumentInfo> cache = dao->query();
 
-    // Assert basic invariants
-    REQUIRE(btc_usdc_sink != nullptr);
+    auto sink = make_data_sink<bybit::InstrumentInfo>(
+        dao->data_acceptor<std::deque<bybit::InstrumentInfo>>(),
+        make_data_acceptor(cache),
+        [](const std::exception_ptr&) {}
+    );
 
-    auto entity_acceptor = btc_usdc_sink->data_acceptor<std::deque<bybit::InstrumentInfoAPI>>();
+    REQUIRE(sink != nullptr);
+
+    auto entity_acceptor = sink->data_acceptor<std::deque<bybit::InstrumentInfoAPI>>();
 
     auto resp_adapter = make_data_adapter<bybit::ApiResponse<bybit::ListResult<bybit::InstrumentInfoAPI>>>(
-            [&](auto&& resp) {
+            [entity_acceptor](auto&& resp) mutable {
                 std::cout << "Adapter: Processing response with " << resp.result.list.size()
                           << " instruments" << std::endl;
-                entity_acceptor(move(resp.result.list));
+                entity_acceptor(std::move(resp.result.list));
             }
         );
     auto dispatcher = make_data_dispatcher(fixture.scheduler->io().get_executor(), resp_adapter);
@@ -116,23 +93,12 @@ TEST_CASE("Write first", "[bybit][instruments]")
     std::cout << "Dispatching JSON sample..." << std::endl;
     dispatcher(http_samples[0]);
 
-    // Wait for data to be received from server
-    std::cout << "Waiting for data sink callback..." << std::endl;
-    auto status = completion_future.wait_for(std::chrono::seconds(2));
-    
-    if (status == std::future_status::timeout) {
-        std::cout << "✗ Timeout waiting for completion" << std::endl;
-        std::cout << "  callback_count=" << callback_count.load() 
-                  << ", data_received=" << data_received.load() << std::endl;
-    } else if (status == std::future_status::ready) {
-        std::cout << "✓ Completion received" << std::endl;
-    }
-    
-    REQUIRE(status == std::future_status::ready);
+    // Wait for async processing
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    // Verify first run behavior: single callback with server data
-    REQUIRE(data_received.load() == true);
-    REQUIRE(callback_count.load() == 1);
+    // Verify results
+    REQUIRE(cache.size() == 1);
+    std::cout << "Received " << cache.size() << " instruments" << std::endl;
 }
 
 namespace SQLite {
