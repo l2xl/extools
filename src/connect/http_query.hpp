@@ -24,6 +24,7 @@
 #include <boost/url.hpp>
 
 #include "connection_context.hpp"
+#include "generic_handler.hpp"
 
 namespace scratcher::connect {
 
@@ -34,34 +35,19 @@ namespace scratcher::connect {
  * - Each connection instance handles a single request
  * - Data provider creates connection per request
  * - DataSink calls operator() to execute the request and receive response
- *
- * Handler callback types:
- * - std::function<void(std::string)> - receives JSON response data
- * - std::function<void(std::exception_ptr)> - receives errors
+ * - generic generic_handler class helper is used to forward data/error to subscriber through handler_data/handler_error virtual methods
  */
 class http_query : public std::enable_shared_from_this<http_query>
 {
     std::weak_ptr<context> m_context;
-    std::function<void(std::string)> m_data_handler;
-    std::function<void(std::exception_ptr)> m_error_handler;
     std::string m_host;
     std::string m_port;
     std::string m_path;
     std::string m_query;
 
-    struct ensure_private {};
-
 public:
-    explicit http_query(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler, ensure_private);
-
-    /**
-     * @brief Create http_query instance
-     * @param context Shared connection context with host resolution
-     * @param url Full URL to request (e.g., "https://api.bybit.com/v5/market/time")
-     * @param data_handler Handler that receives JSON response string
-     * @param error_handler Handler that receives errors
-     */
-    static std::shared_ptr<http_query> create(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler);
+    explicit http_query(std::shared_ptr<context> context, const std::string& url);
+    virtual ~http_query() = default;
 
     /**
      * @brief Create http_query instance with generic callable handlers
@@ -73,20 +59,9 @@ public:
      * @param error_handler Handler that receives errors
      */
     template<typename DataAcceptor, typename ErrorHandler>
-    static std::shared_ptr<http_query> create(std::shared_ptr<context> context, const std::string& url, DataAcceptor&& data_handler, ErrorHandler&& error_handler)
+    static std::shared_ptr<http_query> create(std::shared_ptr<context> ctx, const std::string& url, DataAcceptor&& data_handler, ErrorHandler&& error_handler)
     {
-        // Wrap callables in std::function for type erasure
-        std::function<void(std::string)> wrapped_data_handler =
-            [handler = std::forward<DataAcceptor>(data_handler)](std::string data) mutable {
-                handler(std::move(data));
-            };
-
-        std::function<void(std::exception_ptr)> wrapped_error_handler =
-            [handler = std::forward<ErrorHandler>(error_handler)](std::exception_ptr e) mutable {
-                handler(e);
-            };
-
-        return create(std::move(context), url, std::move(wrapped_data_handler), std::move(wrapped_error_handler));
+        return std::static_pointer_cast<http_query>(std::make_shared<generic_handler<std::string&&, http_query, DataAcceptor, ErrorHandler, std::shared_ptr<context>, const std::string&>>(std::forward<DataAcceptor>(data_handler), std::forward<ErrorHandler>(error_handler), std::move(ctx), url));
     }
 
     /**
@@ -94,6 +69,9 @@ public:
      * @param query_params Query string to append to the initial path/query (e.g., "&symbol=BTCUSDT")
      */
     void operator()(std::string query_params = {});
+
+    virtual void handle_data(std::string&& data) = 0;
+    virtual void handle_error(std::exception_ptr eptr) = 0;
 
 private:
     static boost::asio::awaitable<std::string> co_request(std::weak_ptr<http_query> ref, std::string path_query);

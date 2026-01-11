@@ -31,7 +31,7 @@ using namespace scratcher;
 using namespace datahub;
 
 static std::string http_samples[] = {
-  R"({"retCode":0,"retMsg":"OK","result":{"category":"spot","list":[{"symbol":"BTCUSDC","baseCoin":"BTC","quoteCoin":"USDC","innovation":"0","status":"Trading","marginTrading":"none","stTag":"0","priceFilter":{"tickSize":"0.5","minPrice":"100","maxPrice":"999999"},"lotSizeFilter":{"basePrecision":"0.000001","quotePrecision":"0.01","minOrderQty":"0.00001","maxOrderQty":"10000","minOrderAmt":"10","maxOrderAmt":"500000"},"riskParameters":{"priceLimitRatioX":"0.05","priceLimitRatioY":"0.05"}}]},"retExtInfo":{},"time":1761520794180})",
+  R"({"retCode":0,"retMsg":"OK","result":{"category":"spot","list":[{"symbol":"BTCUSDC","baseCoin":"BTC","quoteCoin":"USDC","symbolType":"normal","innovation":"0","status":"Trading","marginTrading":"none","stTag":"0","priceFilter":{"tickSize":"0.5"},"lotSizeFilter":{"basePrecision":"0.000001","quotePrecision":"0.01","minOrderQty":"0.00001","maxOrderQty":"10000","minOrderAmt":"10","maxOrderAmt":"500000","maxLimitOrderQty":"10000","maxMarketOrderQty":"5000","postOnlyMaxLimitOrderSize":"10000"},"riskParameters":{"priceLimitRatioX":"0.05","priceLimitRatioY":"0.05"}}]},"retExtInfo":{},"time":1761520794180})",
 };
 
 struct DataModelTestFixture {

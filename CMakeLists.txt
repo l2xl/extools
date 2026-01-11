@@ -137,6 +137,7 @@ if(implot_ADDED)
 endif()
 
 set(core_SOURCES
+        src/common/generic_handler.hpp
         src/common/currency.hpp
         src/common/timedef.hpp
         src/common/data_rectangle.hpp
@@ -146,8 +147,7 @@ set(core_SOURCES
         src/data/buoy_candle.hpp
         # DEPRECATED: src/data/bybit.cpp - replaced by datahub stack
         # DEPRECATED: src/data/bybit.hpp - replaced by datahub stack
-        src/data/data_provider.cpp
-        src/data/data_provider.hpp
+        src/data/data_controller.hpp
         src/data/entities/common.hpp
         src/data/entities/common.cpp
         src/data/entities/instrument.hpp
@@ -224,6 +224,7 @@ include_directories(
         contrib
         src
         src/common
+        src/connect
         src/core
         src/app
         src/cockpit

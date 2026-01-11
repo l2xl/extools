@@ -39,7 +39,7 @@ public:
 private:
     imgui::UiBuilder& mUiBuilder;
     std::shared_ptr<scheduler> mScheduler;
-    std::shared_ptr<bybit::ByBitDataManager> mDataManager;
+    std::shared_ptr<IDataController> mDataManager;
 
     panel_id mTabBarId = imgui::INVALID_PANEL;
     panel_id mEmptyTabId = imgui::INVALID_PANEL;

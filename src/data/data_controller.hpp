@@ -22,6 +22,7 @@
 #include <tbb/concurrent_vector.h>
 
 #include "currency.hpp"
+#include "bybit/entities/instrument.hpp"
 #include "entities/trade.hpp"
 
 namespace scratcher {
@@ -54,10 +55,13 @@ struct IDataController
 {
     virtual ~IDataController() = default;
     virtual const std::string& Name() const = 0;
-    virtual std::shared_ptr<IDataProvider> GetDataProvider(const std::string& id) = 0;
-    virtual void AddInsctrumentDataHandler(std::function<void(const std::string&, SourceType)> h) = 0;
-    virtual void AddNewTradeHandler(std::function<void(const std::string&, SourceType)> h) = 0;
-    virtual void AddOrderBookUpdateHandler(std::function<void(const std::string&, SourceType)> h) = 0;
+
+    virtual void SubscribeInstrumentList(std::function<void(const std::deque<bybit::InstrumentInfo>&)> handler) = 0;
+
+    //virtual std::shared_ptr<IDataProvider> GetDataProvider(const std::string& id) = 0;
+    // virtual void AddInsctrumentDataHandler(std::function<void(const std::string&, SourceType)> h) = 0;
+    // virtual void AddNewTradeHandler(std::function<void(const std::string&, SourceType)> h) = 0;
+    // virtual void AddOrderBookUpdateHandler(std::function<void(const std::string&, SourceType)> h) = 0;
 };
 
 

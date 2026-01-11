@@ -25,10 +25,8 @@ namespace this_coro = boost::asio::this_coro;
 using ssl_stream = boost::beast::ssl_stream<boost::beast::tcp_stream>;
 
 
-http_query::http_query(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler, ensure_private)
+http_query::http_query(std::shared_ptr<context> context, const std::string& url)
     : m_context(context)
-    , m_data_handler(std::move(data_handler))
-    , m_error_handler(std::move(error_handler))
 {
     try {
         auto parsed_url = boost::urls::parse_uri(url);
@@ -55,10 +53,6 @@ http_query::http_query(std::shared_ptr<context> context, const std::string& url,
     }
 }
 
-std::shared_ptr<http_query> http_query::create(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler)
-{
-    return std::make_shared<http_query>(std::move(context), url, std::move(data_handler), std::move(error_handler), ensure_private{});
-}
 
 void http_query::operator()(std::string query_params)
 {
@@ -92,13 +86,9 @@ void http_query::operator()(std::string query_params)
         co_spawn(ctx->io(), co_request(ref, path_query), [ref](std::exception_ptr e, std::string result) {
             if (auto self = ref.lock()) {
                 if (e) {
-                    if (self->m_error_handler) {
-                        self->m_error_handler(e);
-                    }
+                    self->handle_error(e);
                 } else {
-                    if (self->m_data_handler) {
-                        self->m_data_handler(std::move(result));
-                    }
+                    self->handle_data(std::move(result));
                 }
             }
         });

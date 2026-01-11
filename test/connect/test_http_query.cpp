@@ -89,13 +89,13 @@ TEST_CASE("http_query bad host")
         response_promise.set_exception(e);
     };
 
-    // Create http_query with invalid host
-    auto query = http_query::create(context, "https://api.bybiiit.com/v5/market/time", data_handler, error_handler);
+    // Create http_query with invalid host (.invalid TLD is reserved by RFC 2606 and guaranteed to never resolve)
+    auto query = http_query::create(context, "https://api.bybit.invalid/v5/market/time", data_handler, error_handler);
 
     // Execute request using invalid URL
     REQUIRE_NOTHROW((*query)());
 
-    // Wait for response with timeout
+    // Wait for response with timeout (DNS resolution failure is fast)
     auto status = response_future.wait_for(std::chrono::seconds(5));
     REQUIRE(status == std::future_status::ready);
 

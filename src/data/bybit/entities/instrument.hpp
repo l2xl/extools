@@ -29,23 +29,25 @@ struct InstrumentInfo {
     std::string symbol;                 // Symbol name (primary key)
     std::string baseCoin;               // Base coin
     std::string quoteCoin;              // Quote coin
-    std::string innovation;             // Innovation zone token ("0" or "1")
+    std::string symbolType;             // Geographic region classification (replaces innovation)
+    std::string innovation;             // Innovation zone token ("0" or "1") - deprecated
     InstrumentStatus status;            // Instrument status
     std::string marginTrading;          // Margin trading support ("utaOnly", etc.)
     std::string stTag;                  // Special treatment label ("0" or "1")
 
     // Flattened priceFilter fields
     std::string tickSize;               // Tick size for price
-    std::string minPrice;               // Minimum price
-    std::string maxPrice;               // Maximum price
 
     // Flattened lotSizeFilter fields
     std::string basePrecision;          // Base coin precision
     std::string quotePrecision;         // Quote coin precision
-    std::string minOrderQty;            // Minimum order quantity
-    std::string maxOrderQty;            // Maximum order quantity
+    std::string minOrderQty;            // Minimum order quantity (deprecated)
+    std::string maxOrderQty;            // Maximum order quantity (deprecated)
     std::string minOrderAmt;            // Minimum order amount
-    std::string maxOrderAmt;            // Maximum order amount
+    std::string maxOrderAmt;            // Maximum order amount (deprecated)
+    std::string maxLimitOrderQty;       // Maximum limit order quantity
+    std::string maxMarketOrderQty;      // Maximum market order quantity
+    std::string postOnlyMaxLimitOrderSize;   // Maximum post-only/RPI order size
 
     // Flattened riskParameters fields
     std::string priceLimitRatioX;       // Price limit ratio X
@@ -68,6 +70,9 @@ namespace detail {
         std::string maxOrderQty;
         std::string minOrderAmt;
         std::string maxOrderAmt;
+        std::string maxLimitOrderQty;
+        std::string maxMarketOrderQty;
+        std::string postOnlyMaxLimitOrderSize;
     };
 
     struct RiskParameters {
@@ -82,6 +87,7 @@ struct InstrumentInfoAPI {
     std::string symbol;
     std::string baseCoin;
     std::string quoteCoin;
+    std::string symbolType;
     std::string innovation;
     InstrumentStatus status;
     std::string marginTrading;
@@ -95,11 +101,13 @@ struct InstrumentInfoAPI {
     // Conversion operator to flat InstrumentInfo for DAO storage
     operator InstrumentInfo() const {
         return InstrumentInfo {
-            symbol, baseCoin, quoteCoin, innovation, status, marginTrading, stTag,
-            priceFilter.tickSize, priceFilter.minPrice, priceFilter.maxPrice,
+            symbol, baseCoin, quoteCoin, symbolType, innovation, status, marginTrading, stTag,
+            priceFilter.tickSize,
             lotSizeFilter.basePrecision, lotSizeFilter.quotePrecision,
             lotSizeFilter.minOrderQty, lotSizeFilter.maxOrderQty,
             lotSizeFilter.minOrderAmt, lotSizeFilter.maxOrderAmt,
+            lotSizeFilter.maxLimitOrderQty, lotSizeFilter.maxMarketOrderQty,
+            lotSizeFilter.postOnlyMaxLimitOrderSize,
             riskParameters.priceLimitRatioX, riskParameters.priceLimitRatioY
         };
     }

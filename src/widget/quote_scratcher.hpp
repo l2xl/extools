@@ -18,7 +18,7 @@
 #include <QPainter>
 
 #include "timedef.hpp"
-#include "data_provider.hpp"
+#include "data_controller.hpp"
 #include "scratcher.hpp"
 #include "buoy_candle.hpp"
 

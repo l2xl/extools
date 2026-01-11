@@ -19,7 +19,7 @@
 
 #include <QDateTime>
 
-#include "data_provider.hpp"
+#include "data_controller.hpp"
 #include "scratch_widget.h"
 #include "quote_scratcher.hpp"
 

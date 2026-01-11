@@ -18,11 +18,15 @@
 #include <exception>
 #include <concepts>
 #include <ranges>
+#include <deque>
 #include <boost/lockfree/spsc_queue.hpp>
 
 #include "data_model.hpp"
+#include "generic_handler.hpp"
 
 namespace datahub {
+
+using scratcher::generic_handler;
 
 template<typename D, typename H>
 class data_adapter
@@ -35,22 +39,24 @@ private:
     handler_type m_handler;
 
 public:
-    data_adapter(handler_type&& h) : m_handler(std::forward<H>(h))
+    explicit data_adapter(handler_type&& h) : m_handler(std::forward<H>(h))
     {}
 
     bool operator()(const std::string& json_data) {
-        //std::clog << "Try JSON: " << json_data << std::endl;
+        std::clog << "Try JSON: " << json_data << std::endl;
         try {
-            auto result = glz::read_json<data_type>(json_data);
-            if (result) {
-                m_handler(std::move(*result));
+            // Use error_on_unknown_keys = false to handle API evolution gracefully
+            // External APIs may add new fields that we don't need to store
+            data_type result{};
+            auto err = glz::read<glz::opts{.error_on_unknown_keys = false}>(result, json_data);
+            if (!err) {
+                m_handler(std::move(result));
                 return true;
             }
-            // else {
-            //     const auto& err = result.error();
-            //     std::clog << "Failed to read json data for type '" << typeid(data_type).name() << "':\n"
-            //               << "  Error: " << glz::format_error(err, json_data) << std::endl;
-            // }
+            else {
+                std::clog << "Failed to read json data for type '" << typeid(data_type).name() << "':\n"
+                          << "  Error: " << glz::format_error(err, json_data) << std::endl;
+            }
         }
         catch (...) {
             std::cerr << "Unknown exception while parsing json for type '" << typeid(data_type).name() << "'" << std::endl;
@@ -100,7 +106,7 @@ public:
         auto queue_ref = std::weak_ptr<queue_type>(m_data_queue);
 
         // Post for async dispatching
-        boost::asio::post(m_dispatch_strand, [=]() {
+        boost::asio::post(m_dispatch_strand, [=] {
             process_queue(queue_ref, acceptors_ref);
         });
     }
@@ -142,56 +148,51 @@ data_dispatcher<Acceptor...> make_data_dispatcher(boost::asio::any_io_executor e
 /**
  * @brief DataSink template providing data flow management with optional filtering
  *
+ * Uses generic_handler pattern for data/error handling (same as http_query).
  * Template parameters:
  * - Entity: The data entity type
- * - DataCallable: Callback for processed data
- * - ErrorCallable: Callback for errors
  * - DataFilter: Optional filter callable (e.g., from data_model::data_acceptor())
  */
-template<typename Entity, typename DataCallable, typename ErrorCallable, typename DataFilter = std::nullptr_t>
-class data_sink : public std::enable_shared_from_this<data_sink<Entity, DataCallable, ErrorCallable, DataFilter>>
+template<typename Entity, typename DataFilter = std::nullptr_t>
+class data_sink : public std::enable_shared_from_this<data_sink<Entity, DataFilter>>
 {
 public:
     using entity_type = Entity;
-    using data_handler_type = DataCallable;
-    using error_handler_type = ErrorCallable;
     using data_filter_type = DataFilter;
 
 private:
-    data_handler_type m_data_handler;
-    error_handler_type m_error_handler;
     [[no_unique_address]] data_filter_type m_data_filter;
 
-    struct ensure_private {};
-
 public:
-    data_sink(data_handler_type&& data_callback,
-              error_handler_type&& error_handler,
-              data_filter_type filter,
-              ensure_private)
-        : m_data_handler(std::forward<data_handler_type>(data_callback))
-        , m_error_handler(std::forward<error_handler_type>(error_handler))
-        , m_data_filter(std::move(filter))
+    explicit data_sink(data_filter_type filter)
+        : m_data_filter(std::move(filter))
     { }
+    virtual ~data_sink() = default;
 
     /**
-     * @brief Factory function to create DataSink
+     * @brief Factory function to create DataSink with generic callable handlers
+     * @tparam DataCallable Callable accepting std::deque<entity_type>&&
+     * @tparam ErrorCallable Callable accepting std::exception_ptr
+     * @param filter Optional filter (e.g., data_model::data_acceptor() for persistence)
      * @param data_callback Handler for processed entity data
      * @param error_callback Handler for errors
-     * @param filter Optional filter (e.g., data_model::data_acceptor() for persistence)
      */
+    template<typename DataCallable, typename ErrorCallable>
     static std::shared_ptr<data_sink> create(
-        data_handler_type&& data_callback,
-        error_handler_type&& error_callback,
-        data_filter_type filter = {})
+        data_filter_type filter,
+        DataCallable&& data_callback,
+        ErrorCallable&& error_callback)
     {
-        auto sink = std::make_shared<data_sink>(
-            std::forward<data_handler_type>(data_callback),
-            std::forward<error_handler_type>(error_callback),
-            std::move(filter),
-            ensure_private{});
-
-        return sink;
+        return std::static_pointer_cast<data_sink>(
+            std::make_shared<generic_handler<
+                std::deque<entity_type>&&,
+                data_sink,
+                DataCallable,
+                ErrorCallable,
+                data_filter_type>>(
+                    std::forward<DataCallable>(data_callback),
+                    std::forward<ErrorCallable>(error_callback),
+                    std::move(filter)));
     }
 
     template <std::ranges::input_range Range>
@@ -205,6 +206,9 @@ public:
         };
     }
 
+    virtual void handle_data(std::deque<entity_type>&& data) = 0;
+    virtual void handle_error(std::exception_ptr eptr) = 0;
+
 private:
     template <std::ranges::input_range Range>
     requires std::convertible_to<std::ranges::range_value_t<Range>, entity_type>
@@ -214,12 +218,10 @@ private:
             std::deque<entity_type> new_entities;
 
             if constexpr (std::is_same_v<data_filter_type, std::nullptr_t>) {
-                // No filter - pass all entities through
                 for (const auto& entity : entities) {
                     new_entities.emplace_back(static_cast<entity_type>(entity));
                 }
             } else {
-                // Convert input range to deque and apply filter
                 std::deque<entity_type> input;
                 for (const auto& entity : entities) {
                     input.emplace_back(static_cast<entity_type>(entity));
@@ -228,33 +230,33 @@ private:
             }
 
             if (!new_entities.empty()) {
-                m_data_handler(std::move(new_entities));
+                handle_data(std::move(new_entities));
             }
         }
         catch (const std::exception&) {
-            m_error_handler(std::current_exception());
+            handle_error(std::current_exception());
         }
     }
 };
 
 // Factory with filter (e.g., data_model::data_acceptor() for persistence)
-template<typename Entity, typename DataCallable, typename ErrorCallable, typename DataFilter>
+template<typename Entity, typename DataFilter, typename DataCallable, typename ErrorCallable>
 auto make_data_sink(DataFilter&& data_filter, DataCallable&& data_callback, ErrorCallable&& error_callback)
 {
-    return data_sink<Entity, std::decay_t<DataCallable>, std::decay_t<ErrorCallable>, std::decay_t<DataFilter>>::create(
+    return data_sink<Entity, std::decay_t<DataFilter>>::create(
+        std::forward<DataFilter>(data_filter),
         std::forward<DataCallable>(data_callback),
-        std::forward<ErrorCallable>(error_callback),
-        std::forward<DataFilter>(data_filter));
+        std::forward<ErrorCallable>(error_callback));
 }
 
 // Factory without filter (pass-through mode)
 template<typename Entity, typename DataCallable, typename ErrorCallable>
 auto make_data_sink(DataCallable&& data_callback, ErrorCallable&& error_callback)
 {
-    return data_sink<Entity, std::decay_t<DataCallable>, std::decay_t<ErrorCallable>, std::nullptr_t>::create(
+    return data_sink<Entity, std::nullptr_t>::create(
+        nullptr,
         std::forward<DataCallable>(data_callback),
-        std::forward<ErrorCallable>(error_callback),
-        nullptr);
+        std::forward<ErrorCallable>(error_callback));
 }
 
 template<typename Container>

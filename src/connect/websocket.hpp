@@ -29,6 +29,7 @@
 
 
 #include "connection_context.hpp"
+#include "generic_handler.hpp"
 
 namespace scratcher::connect {
 
@@ -53,8 +54,6 @@ class websock_connection : public std::enable_shared_from_this<websock_connectio
 
     std::atomic<status> m_status = status::INIT;
     std::weak_ptr<context> m_context;
-    std::function<void(std::string)> m_data_handler;
-    std::function<void(std::exception_ptr)> m_error_handler;
     boost::asio::strand<websocket_stream::executor_type> m_strand;
 
     std::function<void(std::exception_ptr)> m_common_handler;
@@ -70,26 +69,17 @@ class websock_connection : public std::enable_shared_from_this<websock_connectio
     std::shared_ptr<boost::asio::steady_timer> m_heartbeat_timer;
     std::chrono::steady_clock::time_point m_last_heartbeat;
     std::atomic<size_t> m_request_counter = 0;
-    
+
     // Async operations
     static boost::asio::awaitable<void> co_heartbeat_loop(std::weak_ptr<websock_connection>);
     static boost::asio::awaitable<void> co_exec_loop(std::weak_ptr<websock_connection>);
     static boost::asio::awaitable<void> co_open(std::shared_ptr<websock_connection>);
     static boost::asio::awaitable<std::string> co_read(std::weak_ptr<websock_connection>);
     static boost::asio::awaitable<void> co_message(std::shared_ptr<websock_connection>, std::string message);
-    
-    struct ensure_private {};
-public:
-    explicit websock_connection(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler, ensure_private);
 
-    /**
-     * @brief Create WebSocketConnection instance
-     * @param context Shared connection context with host resolution
-     * @param url Full URL to request (e.g., "wss://api.bybit.com/v5/public/spot")
-     * @param data_handler Handler that receives JSON messages
-     * @param error_handler Handler that receives errors
-     */
-    static std::shared_ptr<websock_connection> create(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler);
+public:
+    explicit websock_connection(std::shared_ptr<context> context, const std::string& url);
+    virtual ~websock_connection() = default;
 
     /**
      * @brief Create WebSocketConnection instance with generic callable handlers
@@ -101,27 +91,34 @@ public:
      * @param error_handler Handler that receives errors
      */
     template<typename DataAcceptor, typename ErrorHandler>
-    static std::shared_ptr<websock_connection> create(std::shared_ptr<context> context, const std::string& url, DataAcceptor&& data_handler, ErrorHandler&& error_handler)
+    static std::shared_ptr<websock_connection> create(std::shared_ptr<context> ctx, const std::string& url, DataAcceptor&& data_handler, ErrorHandler&& error_handler)
     {
-        // Wrap callables in std::function for type erasure
-        std::function<void(std::string)> wrapped_data_handler =
-            [handler = std::forward<DataAcceptor>(data_handler)](std::string data) mutable {
-                handler(std::move(data));
-            };
+        auto ws = std::static_pointer_cast<websock_connection>(
+            std::make_shared<generic_handler<std::string, websock_connection, DataAcceptor, ErrorHandler, std::shared_ptr<context>, const std::string&>>(
+                std::forward<DataAcceptor>(data_handler),
+                std::forward<ErrorHandler>(error_handler),
+                std::move(ctx), url));
 
-        std::function<void(std::exception_ptr)> wrapped_error_handler =
-            [handler = std::forward<ErrorHandler>(error_handler)](std::exception_ptr e) mutable {
-                handler(e);
-            };
+        std::weak_ptr<websock_connection> ref = ws;
+        ws->m_common_handler = [ref](std::exception_ptr e) {
+            if (e) {
+                if (auto self = ref.lock()) {
+                    self->handle_error(e);
+                }
+            }
+        };
 
-        return create(std::move(context), url, std::move(wrapped_data_handler), std::move(wrapped_error_handler));
+        boost::asio::co_spawn(ws->m_strand, co_exec_loop(ws), ws->m_common_handler);
+        boost::asio::co_spawn(ws->m_strand, co_heartbeat_loop(ws), ws->m_common_handler);
+
+        return ws;
     }
 
+    virtual void handle_data(std::string data) = 0;
+    virtual void handle_error(std::exception_ptr eptr) = 0;
+
     void set_heartbeat(std::chrono::seconds seconds, std::function<std::string(size_t number)>);
-    /**
-     * @brief Send subscription message
-     * @param message Subscription message to send
-     */
+
     void operator()(std::string message);
 };
 

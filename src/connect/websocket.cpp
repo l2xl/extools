@@ -24,10 +24,8 @@ using boost::asio::use_awaitable;
 namespace this_coro =  boost::asio::this_coro;
 
 
-websock_connection::websock_connection(std::shared_ptr<context> ctx, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler, ensure_private)
+websock_connection::websock_connection(std::shared_ptr<context> ctx, const std::string& url)
     : m_context(ctx)
-    , m_data_handler(std::move(data_handler))
-    , m_error_handler(std::move(error_handler))
     , m_strand(make_strand(ctx->io()))
     , m_heartbeat_timer(std::make_shared<boost::asio::steady_timer>(m_strand, std::chrono::steady_clock::time_point::max()))
     , m_last_heartbeat(std::chrono::steady_clock::time_point::min())
@@ -55,27 +53,6 @@ websock_connection::websock_connection(std::shared_ptr<context> ctx, const std::
     }
 }
 
-std::shared_ptr<websock_connection> websock_connection::create(std::shared_ptr<context> context, const std::string& url, std::function<void(std::string)> data_handler, std::function<void(std::exception_ptr)> error_handler)
-{
-    auto ws = std::make_shared<websock_connection>(std::move(context), url, std::move(data_handler), std::move(error_handler), ensure_private{});
-
-    std::weak_ptr<websock_connection> ref = ws;
-    ws->m_common_handler = [ref](std::exception_ptr e) {
-        if (e) {
-            if (auto self = ref.lock()) {
-                if (self->m_error_handler) {
-                    self->m_error_handler(e);
-                }
-            }
-        }
-    };
-
-    co_spawn(ws->m_strand, co_exec_loop(ws), ws->m_common_handler);
-    co_spawn(ws->m_strand, co_heartbeat_loop(ws), ws->m_common_handler);
-
-    return ws;
-}
-
 void websock_connection::set_heartbeat(std::chrono::seconds seconds, std::function<std::string(size_t number)> heartbeat_generator)
 {
     m_make_heartbeat_mesage = std::move(heartbeat_generator);
@@ -84,7 +61,6 @@ void websock_connection::set_heartbeat(std::chrono::seconds seconds, std::functi
 
 void websock_connection::operator()(std::string message)
 {
-    std::weak_ptr<websock_connection> ref = weak_from_this();
     co_spawn(m_strand, co_message(shared_from_this(), std::move(message)), m_common_handler);
 }
 
@@ -154,14 +130,12 @@ boost::asio::awaitable<void> websock_connection::co_heartbeat_loop(std::weak_ptr
 boost::asio::awaitable<void> websock_connection::co_exec_loop(std::weak_ptr<websock_connection> ref)
 {
     namespace this_coro = boost::asio::this_coro;
-    
+
     try {
-        std::function<void(std::string)> data_handler;
         for (;;) {
             try {
                 if (auto self = ref.lock()) {
                     co_await co_open(self);
-                    data_handler = self->m_data_handler;
                     break;
                 }
                 co_return;
@@ -175,13 +149,15 @@ boost::asio::awaitable<void> websock_connection::co_exec_loop(std::weak_ptr<webs
             co_await boost::asio::steady_timer(co_await this_coro::executor, std::chrono::milliseconds(250)).async_wait(use_awaitable);
         }
 
-        for ( ; data_handler; ) {
+        for (;;) {
             std::string message = co_await co_read(ref);
-            if (data_handler) {
-                data_handler(std::move(message));
+            if (auto self = ref.lock()) {
+                self->handle_data(std::move(message));
+            }
+            else {
+                co_return;
             }
         }
-        co_return;
     }
     catch (boost::system::error_code& ec) {
         if (auto self = ref.lock()) {

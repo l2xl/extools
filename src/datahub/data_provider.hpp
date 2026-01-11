@@ -21,6 +21,7 @@
 
 #include "data_model.hpp"
 #include "data_sink.hpp"
+#include "generic_handler.hpp"
 
 namespace datahub {
 
@@ -31,6 +32,7 @@ namespace datahub {
  * Template parameters:
  * - Entity: The data entity type
  * - PrimaryKey: Pointer to member for primary key field
+ * - ErrorHandler: Error callback type (inferred by make_data_provider)
  */
 template<typename Entity, auto PrimaryKey>
 class data_provider : public std::enable_shared_from_this<data_provider<Entity, PrimaryKey>>
@@ -42,33 +44,41 @@ public:
     using subscription_handler = std::function<void(const cache_type&)>;
 
 private:
+    using data_handler_type = std::function<void(cache_type&&)>;
+    using sink_filter_type = decltype(std::declval<model_type>().template data_acceptor<cache_type>());
+    using sink_type = data_sink<entity_type, sink_filter_type>;
+
     std::shared_ptr<model_type> m_model;
     cache_type m_cache;
-    std::list<subscription_handler> m_subscribers;
-
-    using sink_data_handler = std::function<void(cache_type&&)>;
-    using sink_error_handler = std::function<void(std::exception_ptr)>;
-    using sink_filter_type = decltype(std::declval<model_type>().template data_acceptor<cache_type>());
-    using sink_type = data_sink<entity_type, sink_data_handler, sink_error_handler, sink_filter_type>;
-
     std::shared_ptr<sink_type> m_sink;
 
-    struct ensure_private {};
+    std::list<subscription_handler> m_subscribers;
 
-    void notify_subscribers() {
+    static void handle_new_entities(std::weak_ptr<data_provider> ref, cache_type&& new_entities) {
+        if (auto self = ref.lock()) {
+            self->handle_new_entities(std::move(new_entities));
+        }
+    }
+
+    void handle_new_entities(cache_type&& new_entities) {
+        std::ranges::move(new_entities, std::back_inserter(m_cache));
         for (const auto& handler : m_subscribers) {
             handler(m_cache);
         }
     }
 
 public:
-    data_provider(std::shared_ptr<SQLite::Database> db, ensure_private)
+    data_provider(std::shared_ptr<SQLite::Database> db)
         : m_model(model_type::create(std::move(db)))
+        , m_sink()
     {}
+    virtual ~data_provider() = default;
 
-    static std::shared_ptr<data_provider> create(std::shared_ptr<SQLite::Database> db)
+    template<typename ErrorCallable>
+    static std::shared_ptr<data_provider> create(std::shared_ptr<SQLite::Database> db, ErrorCallable&& error_handler)
     {
-        auto self = std::make_shared<data_provider>(std::move(db), ensure_private{});
+        auto self = std::make_shared<generic_handler<cache_type&&, data_provider, void(*)(cache_type&&), ErrorCallable, std::shared_ptr<SQLite::Database>>>(
+            [](cache_type&&){}, std::forward<ErrorCallable>(error_handler), std::move(db));
 
         // Load cached data from DB
         self->m_cache = self->m_model->query();
@@ -76,27 +86,13 @@ public:
         // Create data sink linking DB persistence and memory cache
         std::weak_ptr<data_provider> ref = self;
 
-        sink_data_handler data_handler = [ref](cache_type&& entities) {
-            if (auto self = ref.lock()) {
-                std::ranges::move(entities, std::back_inserter(self->m_cache));
-                self->notify_subscribers();
-            }
-        };
-
-        sink_error_handler error_handler = [](std::exception_ptr) {};
-
-        self->m_sink = sink_type::create(
-            std::move(data_handler),
-            std::move(error_handler),
-            self->m_model->template data_acceptor<cache_type>()
+        self->m_sink = make_data_sink<entity_type>(
+            self->m_model->template data_acceptor<cache_type>(),
+            [ref](cache_type&& entities) { handle_new_entities(ref, std::move(entities)); },
+            [ref](auto eptr) { if (auto self = ref.lock()) self->handle_error(eptr); }
         );
 
-        // Notify subscribers with initial cache if not empty
-        if (!self->m_cache.empty()) {
-            self->notify_subscribers();
-        }
-
-        return self;
+        return std::static_pointer_cast<data_provider>(self);
     }
 
     const cache_type& cache() const
@@ -123,18 +119,16 @@ public:
         }
     }
 
-    template<typename... Args>
-    void subscribe(const QueryCondition& condition, subscription_handler handler, Args&&... args)
-    {
-        m_subscribers.emplace_back(std::move(handler));
 
-        // Query with condition and notify immediately
-        auto filtered = m_model->query(condition, std::forward<Args>(args)...);
-        if (!filtered.empty()) {
-            m_subscribers.back()(filtered);
-        }
-    }
+    virtual void handle_data(cache_type&& data) = 0;
+    virtual void handle_error(std::exception_ptr eptr) = 0;
 };
+
+template<typename Entity, auto PrimaryKey, typename ErrorCallable>
+auto make_data_provider(std::shared_ptr<SQLite::Database> db, ErrorCallable&& error_handler)
+{
+    return data_provider<Entity, PrimaryKey>::create(std::move(db), std::forward<ErrorCallable>(error_handler));
+}
 
 } // namespace datahub
 

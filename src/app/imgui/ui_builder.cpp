@@ -69,7 +69,6 @@ void UiBuilder::SetInstruments(instrument_list instruments)
 {
     mInstruments = std::move(instruments);
     mInstrumentsLoaded = true;
-    Render();
 }
 
 void UiBuilder::SetOnInstrumentSelected(on_instrument_selected_t handler)

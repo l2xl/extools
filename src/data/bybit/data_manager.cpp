@@ -19,7 +19,7 @@
 #include "data_manager.hpp"
 #include "config.hpp"
 #include "connect/http_query.hpp"
-#include "common.hpp"
+#include "data_controller.hpp"
 
 namespace scratcher::bybit {
 namespace {
@@ -38,21 +38,21 @@ namespace {
 
 const std::string ByBitDataManager::BYBIT = "ByBit";
 
-std::shared_ptr<ByBitDataProvider> ByBitDataProvider::Create()
-{
-    return std::make_shared<ByBitDataProvider>(EnsurePrivate());
-}
+// std::shared_ptr<ByBitDataProvider> ByBitDataProvider::Create()
+// {
+//     return std::make_shared<ByBitDataProvider>(EnsurePrivate());
+// }
+//
+// std::string ByBitDataProvider::GetInstrumentMetadata() const
+// {
+//     if (!m_instrument.has_value()) {
+//         return "{}";
+//     }
+//
+//     return glz::write_json(*m_instrument).value();
+// }
 
-std::string ByBitDataProvider::GetInstrumentMetadata() const
-{
-    if (!m_instrument.has_value()) {
-        return "{}";
-    }
-
-    return glz::write_json(*m_instrument).value();
-}
-
-ByBitDataManager::ByBitDataManager(std::shared_ptr<scheduler> scheduler, std::shared_ptr<Config> config, std::shared_ptr<SQLite::Database> db, EnsurePrivate)
+ByBitDataManager::ByBitDataManager(std::shared_ptr<scheduler> scheduler, std::shared_ptr<Config> config, std::shared_ptr<SQLite::Database> db, ensure_private)
     : m_context(connect::context::create(scheduler->io()))
     , m_db(std::move(db))
     , m_config(std::move(config))
@@ -64,10 +64,10 @@ ByBitDataManager::ByBitDataManager(std::shared_ptr<scheduler> scheduler, std::sh
 
 std::shared_ptr<ByBitDataManager> ByBitDataManager::Create(std::shared_ptr<scheduler> scheduler, std::shared_ptr<Config> config, std::shared_ptr<SQLite::Database> db)
 {
-    auto self = std::make_shared<ByBitDataManager>(scheduler, std::move(config), std::move(db), EnsurePrivate());
+    auto self = std::make_shared<ByBitDataManager>(scheduler, std::move(config), std::move(db), ensure_private());
 
     // Create instrument provider (RAII: creates DB table and loads cache)
-    self->m_instrument_provider = instrument_provider_type::create(self->m_db);
+    self->m_instrument_provider = datahub::make_data_provider<InstrumentInfo, &InstrumentInfo::symbol>(self->m_db, [self](auto e){ self->HandleError(e); });
 
     // Subscribe to instrument updates
     std::weak_ptr<ByBitDataManager> ref = self;
@@ -84,17 +84,6 @@ std::shared_ptr<ByBitDataManager> ByBitDataManager::Create(std::shared_ptr<sched
 }
 
 
-std::shared_ptr<IDataProvider> ByBitDataManager::GetDataProvider(const std::string &symbol)
-{
-    auto it = m_instrument_data.find(symbol);
-
-    if (it == m_instrument_data.end()) {
-        //TODO: subscribe and create the data provider
-    }
-
-    return it != m_instrument_data.end() ? it->second : nullptr;
-}
-
 
 void ByBitDataManager::HandleError(std::exception_ptr eptr)
 {
@@ -105,36 +94,36 @@ void ByBitDataManager::HandleError(std::exception_ptr eptr)
     }
 }
 
-void ByBitDataManager::AddInsctrumentDataHandler(std::function<void(const std::string &, SourceType)> h)
-{
-    m_instrument_handlers.emplace_back(h);
-
-    // If instrument data is already received, call the handler immediately
-    for (const auto &[symbol, instrument]: m_instrument_data) {
-        if (instrument->IsReadyHandleData())
-            h(symbol, SourceType::CACHE);
-    }
-}
+// void ByBitDataManager::AddInsctrumentDataHandler(std::function<void(const std::string &, SourceType)> h)
+// {
+//     m_instrument_handlers.emplace_back(h);
+//
+//     // If instrument data is already received, call the handler immediately
+//     for (const auto &[symbol, instrument]: m_instrument_data) {
+//         if (instrument->IsReadyHandleData())
+//             h(symbol, SourceType::CACHE);
+//     }
+// }
 
 
 void ByBitDataManager::HandleInstrumentsData(const std::deque<InstrumentInfo>& instruments)
 {
     std::clog << "onInstrumentsData: " << instruments.size() << " instruments" << std::endl;
 
-    // Update providers map (per-symbol)
-    for (const auto& instrument : instruments) {
-        const std::string& symbol = instrument.symbol;
-
-        if (m_instrument_data.find(symbol) == m_instrument_data.end()) {
-            m_instrument_data[symbol] = ByBitDataProvider::Create();
-        }
-        m_instrument_data[symbol]->SetInstrument(InstrumentInfo(instrument));
-
-        // Call per-symbol handlers
-        for (const auto& h : m_instrument_handlers) {
-            h(symbol, SourceType::MARKET);
-        }
-    }
+    // // Update providers map (per-symbol)
+    // for (const auto& instrument : instruments) {
+    //     const std::string& symbol = instrument.symbol;
+    //
+    //     if (m_instrument_data.find(symbol) == m_instrument_data.end()) {
+    //         m_instrument_data[symbol] = ByBitDataProvider::Create();
+    //     }
+    //     m_instrument_data[symbol]->SetInstrument(InstrumentInfo(instrument));
+    //
+    //     // Call per-symbol handlers
+    //     for (const auto& h : m_instrument_handlers) {
+    //         h(symbol, SourceType::MARKET);
+    //     }
+    // }
 }
 
 void ByBitDataManager::SetupInstrumentDataSource()
@@ -157,7 +146,7 @@ void ByBitDataManager::SetupInstrumentDataSource()
 
     auto ref = weak_from_this();
 
-    auto query = connect::http_query::create(
+    m_instruments_query = connect::http_query::create(
         m_context,
         url,
         std::move(dispatcher),
@@ -167,7 +156,7 @@ void ByBitDataManager::SetupInstrumentDataSource()
         }
     );
 
-    (*query)();  // Execute the query
+    (*m_instruments_query)();  // Execute the query
 }
 
 } // scratcher::bybit
