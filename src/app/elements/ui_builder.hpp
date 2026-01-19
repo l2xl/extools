@@ -18,10 +18,12 @@
 #include <optional>
 #include <functional>
 #include <unordered_map>
+#include <memory>
 
+#include <elements.hpp>
 #include "app/ui_builder.hpp"
 
-namespace scratcher::imgui {
+namespace scratcher::elements {
 
 using panel_id = ui::panel_id;
 constexpr panel_id INVALID_PANEL = ui::INVALID_PANEL;
@@ -40,7 +42,7 @@ struct TabBarState {
 class UiBuilder : public ui::IUiBuilder
 {
 public:
-    UiBuilder() = default;
+    UiBuilder();
 
     bool IsReady() const override { return mInstrumentsLoaded; }
 
@@ -54,29 +56,36 @@ public:
 
     void SetOnInstrumentSelected(on_instrument_selected_t handler) override;
     void SetOnTabClosed(on_tab_closed_t handler) override;
+    void SetOnAddTab(on_add_tab_t handler) override;
 
-    // Called each frame by MainWindow
-    void Render();
+    cycfi::elements::element_ptr MakeContent();
+    cycfi::elements::element_ptr MakeTabBarOnly();
+    cycfi::elements::element_ptr MakeContentPanel();
 
-    // Render compact tab bar for title bar area
-    void RenderTitleTabs();
+    void SetView(cycfi::elements::view* view) { mView = view; }
+    void RefreshView();
 
 private:
-    void RenderTabBarImpl(TabBarState& tab_bar);
-    void RenderMarketPanel(const MarketPanelState& panel);
-    void RenderEmptyTab(MarketPanelState& panel);
-    void RenderSpinner(const char* label);
+    cycfi::elements::element_ptr MakeTabBar(TabBarState& tab_bar);
+    cycfi::elements::element_ptr MakeTabButton(const MarketPanelState& tab, size_t index, TabBarState& tab_bar);
+    cycfi::elements::element_ptr MakeMarketPanel(const MarketPanelState& panel);
+    cycfi::elements::element_ptr MakeEmptyTab(MarketPanelState& panel);
+    cycfi::elements::element_ptr MakeInstrumentList(MarketPanelState& panel);
+    cycfi::elements::element_ptr MakeLoadingSpinner();
 
     panel_id mNextPanelId = 1;
     bool mInstrumentsLoaded = false;
 
     std::unordered_map<panel_id, TabBarState> mTabBars;
-    std::unordered_map<panel_id, panel_id> mTabToTabBar; // tab_id -> tab_bar_id
+    std::unordered_map<panel_id, panel_id> mTabToTabBar;
 
     instrument_list mInstruments;
 
     on_instrument_selected_t mOnInstrumentSelected;
     on_tab_closed_t mOnTabClosed;
+    on_add_tab_t mOnAddTab;
+
+    cycfi::elements::view* mView = nullptr;
 };
 
-} // namespace scratcher::imgui
+} // namespace scratcher::elements

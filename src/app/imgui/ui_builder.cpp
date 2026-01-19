@@ -18,7 +18,7 @@
 
 namespace scratcher::imgui {
 
-panel_id UiBuilder::RenderTabBar()
+panel_id UiBuilder::CreateTabBar()
 {
     panel_id id = mNextPanelId++;
     mTabBars[id] = TabBarState{id, {}, 0};

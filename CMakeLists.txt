@@ -136,6 +136,22 @@ if(implot_ADDED)
     target_link_libraries(implot PUBLIC imgui)
 endif()
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(CAIRO cairo)
+if(CAIRO_FOUND)
+    CPMAddPackage(
+        NAME elements
+        GITHUB_REPOSITORY cycfi/elements
+        GIT_TAG master
+        OPTIONS
+            "ELEMENTS_BUILD_EXAMPLES OFF"
+    )
+    set(ELEMENTS_AVAILABLE ON)
+else()
+    message(WARNING "cairo not found, Elements UI will not be built. Install libcairo2-dev to enable.")
+    set(ELEMENTS_AVAILABLE OFF)
+endif()
+
 set(core_SOURCES
         src/common/generic_handler.hpp
         src/common/currency.hpp
@@ -219,6 +235,38 @@ pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
 
 target_link_libraries(imscratcher PRIVATE imgui implot core glaze::glaze ${CMAKE_DL_LIBS} ${FONTCONFIG_LIBRARIES})
 target_include_directories(imscratcher PRIVATE ${FONTCONFIG_INCLUDE_DIRS})
+
+# Add elscratcher executable (Elements-based application)
+add_executable(elscratcher
+            src/elscratcher_main.cpp
+            src/app/elements/main_window.cpp
+            src/app/elements/main_window.hpp
+            src/app/elements/ui_builder.hpp
+            src/app/elements/ui_builder.cpp
+            src/app/ui_builder.hpp
+            src/cockpit/trade_cockpit.hpp
+            src/cockpit/trade_cockpit.cpp
+            src/config.hpp
+            src/config.cpp
+    )
+target_link_libraries(elscratcher PRIVATE elements core glaze::glaze)
+
+# Copy Elements font resources for elscratcher
+set(ELEMENTS_FONT_DIR "${elements_SOURCE_DIR}/resources/fonts")
+set(ELSCRATCHER_RESOURCES_DIR "$<TARGET_FILE_DIR:elscratcher>/resources")
+
+add_custom_command(
+    TARGET elscratcher POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${ELSCRATCHER_RESOURCES_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${ELEMENTS_FONT_DIR}/elements_basic.ttf"
+        "${ELEMENTS_FONT_DIR}/OpenSans-Regular.ttf"
+        "${ELEMENTS_FONT_DIR}/OpenSans-Light.ttf"
+        "${ELEMENTS_FONT_DIR}/OpenSans-Bold.ttf"
+        "${ELEMENTS_FONT_DIR}/Roboto-Regular.ttf"
+        ${ELSCRATCHER_RESOURCES_DIR}
+    COMMENT "Copying Elements font resources for elscratcher"
+)
 
 include_directories(
         contrib

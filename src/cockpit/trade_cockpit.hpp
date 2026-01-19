@@ -21,7 +21,7 @@
 
 #include "scheduler.hpp"
 #include "bybit/data_manager.hpp"
-#include "app/imgui/ui_builder.hpp"
+#include "app/ui_builder.hpp"
 
 class Config;
 
@@ -34,15 +34,15 @@ namespace scratcher::cockpit {
 class TradeCockpit : public std::enable_shared_from_this<TradeCockpit>
 {
 public:
-    using panel_id = imgui::panel_id;
+    using panel_id = ui::panel_id;
 
 private:
-    imgui::UiBuilder& mUiBuilder;
+    ui::IUiBuilder& mUiBuilder;
     std::shared_ptr<scheduler> mScheduler;
     std::shared_ptr<IDataController> mDataManager;
 
-    panel_id mTabBarId = imgui::INVALID_PANEL;
-    panel_id mEmptyTabId = imgui::INVALID_PANEL;
+    panel_id mTabBarId = ui::INVALID_PANEL;
+    panel_id mEmptyTabId = ui::INVALID_PANEL;
 
     std::unordered_map<panel_id, std::string> mTabSymbols;
 
@@ -51,9 +51,9 @@ private:
     void OnInstrumentsLoaded(const std::deque<bybit::InstrumentInfo>& instruments);
 
 public:
-    TradeCockpit(imgui::UiBuilder& ui_builder, std::shared_ptr<scheduler> sched, std::shared_ptr<Config> config, std::shared_ptr<SQLite::Database> db, EnsurePrivate);
+    TradeCockpit(ui::IUiBuilder& ui_builder, std::shared_ptr<scheduler> sched, std::shared_ptr<Config> config, std::shared_ptr<SQLite::Database> db, EnsurePrivate);
 
-    static std::shared_ptr<TradeCockpit> Create( imgui::UiBuilder& ui_builder, std::shared_ptr<scheduler> sched, std::shared_ptr<Config> config, std::shared_ptr<SQLite::Database> db);
+    static std::shared_ptr<TradeCockpit> Create(ui::IUiBuilder& ui_builder, std::shared_ptr<scheduler> sched, std::shared_ptr<Config> config, std::shared_ptr<SQLite::Database> db);
 
     std::shared_ptr<IDataController> DataController()
     { return mDataManager; }
