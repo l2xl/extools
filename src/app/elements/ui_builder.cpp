@@ -12,367 +12,116 @@
 // -----END PGP PUBLIC KEY BLOCK-----
 
 #include "ui_builder.hpp"
-#include <algorithm>
 
 namespace scratcher::elements {
 
 namespace el = cycfi::elements;
+using cockpit::PanelType;
+using cockpit::PanelTypeName;
 
 namespace {
 
-el::color tab_normal_color = el::rgba(45, 45, 48, 255);
-el::color tab_active_color = el::rgba(60, 60, 65, 255);
-el::color tab_hover_color = el::rgba(70, 70, 75, 255);
-el::color separator_color = el::rgba(80, 80, 85, 255);
-el::color text_color = el::rgba(200, 200, 200, 255);
-el::color accent_color = el::rgba(180, 180, 230, 255);
+el::color header_bg_color = el::rgba(40, 40, 45, 255);
+el::color footer_bg_color = el::rgba(35, 35, 40, 255);
+el::color content_bg_color = el::rgba(30, 30, 35, 255);
+el::color divider_color = el::rgba(80, 80, 90, 255);
 el::color dim_text_color = el::rgba(128, 128, 128, 255);
+el::color label_text_color = el::rgba(200, 200, 200, 255);
+
+const PanelType all_panel_types[] = {
+    PanelType::MarketGraph,
+    PanelType::OrderBook,
+    PanelType::Orders,
+    PanelType::TradeHistory,
+};
+
+class AutoPositionMenu : public el::basic_button_menu
+{
+public:
+    bool click(el::context const& ctx, el::mouse_button btn) override
+    {
+        if (btn.down) {
+            auto view_size = ctx.view.size();
+            bool open_left = (ctx.bounds.left + ctx.bounds.right) / 2 > view_size.x / 2;
+            bool open_up = (ctx.bounds.top + ctx.bounds.bottom) / 2 > view_size.y / 2;
+
+            if (open_up)
+                position(open_left ? el::menu_position::top_left : el::menu_position::top_right);
+            else
+                position(open_left ? el::menu_position::bottom_left : el::menu_position::bottom_right);
+        }
+        return el::basic_button_menu::click(ctx, btn);
+    }
+};
 
 } // anonymous namespace
 
-UiBuilder::UiBuilder()
+el::element_ptr UiBuilder::MakeAppBar(el::element_ptr tab_bar_area,
+                                       el::element_ptr menu_items,
+                                       std::function<void(bool)> onHamburger)
 {
-}
+    auto& thm = el::get_theme();
+    auto menu_bg_color = thm.panel_color;
+    auto transparent = el::rgba(0, 0, 0, 0);
 
-panel_id UiBuilder::CreateTabBar()
-{
-    panel_id id = mNextPanelId++;
-    mTabBars[id] = TabBarState{id, {}, 0};
-    return id;
-}
-
-panel_id UiBuilder::AddMarketTab(panel_id tab_bar_id, const std::optional<std::string>& symbol)
-{
-    auto it = mTabBars.find(tab_bar_id);
-    if (it == mTabBars.end())
-        return INVALID_PANEL;
-
-    panel_id tab_id = mNextPanelId++;
-    it->second.tabs.push_back(MarketPanelState{tab_id, symbol});
-    mTabToTabBar[tab_id] = tab_bar_id;
-    return tab_id;
-}
-
-void UiBuilder::SetTabSymbol(panel_id tab_id, const std::string& symbol)
-{
-    auto bar_it = mTabToTabBar.find(tab_id);
-    if (bar_it == mTabToTabBar.end()) return;
-
-    auto& tab_bar = mTabBars[bar_it->second];
-    for (auto& tab : tab_bar.tabs) {
-        if (tab.id == tab_id) {
-            tab.symbol = symbol;
-            break;
-        }
-    }
-    RefreshView();
-}
-
-void UiBuilder::CloseTab(panel_id tab_id)
-{
-    auto bar_it = mTabToTabBar.find(tab_id);
-    if (bar_it == mTabToTabBar.end()) return;
-
-    auto& tab_bar = mTabBars[bar_it->second];
-    auto it = std::find_if(tab_bar.tabs.begin(), tab_bar.tabs.end(),
-        [tab_id](const MarketPanelState& t) { return t.id == tab_id; });
-
-    if (it != tab_bar.tabs.end()) {
-        tab_bar.tabs.erase(it);
-        mTabToTabBar.erase(tab_id);
-
-        if (tab_bar.active_tab >= tab_bar.tabs.size() && tab_bar.active_tab > 0) {
-            tab_bar.active_tab = tab_bar.tabs.size() - 1;
-        }
-    }
-    RefreshView();
-}
-
-void UiBuilder::SetInstruments(instrument_list instruments)
-{
-    mInstruments = std::move(instruments);
-    mInstrumentsLoaded = true;
-    RefreshView();
-}
-
-void UiBuilder::SetOnInstrumentSelected(on_instrument_selected_t handler)
-{
-    mOnInstrumentSelected = std::move(handler);
-}
-
-void UiBuilder::SetOnTabClosed(on_tab_closed_t handler)
-{
-    mOnTabClosed = std::move(handler);
-}
-
-void UiBuilder::SetOnAddTab(on_add_tab_t handler)
-{
-    mOnAddTab = std::move(handler);
-}
-
-void UiBuilder::RefreshView()
-{
-    if (mView) {
-        mView->refresh();
-    }
-}
-
-el::element_ptr UiBuilder::MakeContent()
-{
-    if (!mInstrumentsLoaded) {
-        return MakeLoadingSpinner();
-    }
-
-    if (mTabBars.empty()) {
-        return el::share(
-            el::align_center_middle(
-                el::label("No tabs available").font_size(16)
-            )
-        );
-    }
-
-    el::vtile_composite content_vtile;
-
-    for (auto& [id, tab_bar] : mTabBars) {
-        content_vtile.push_back(MakeTabBar(tab_bar));
-
-        if (tab_bar.active_tab < tab_bar.tabs.size()) {
-            const auto& tab = tab_bar.tabs[tab_bar.active_tab];
-            if (tab.symbol.has_value()) {
-                content_vtile.push_back(MakeMarketPanel(tab));
-            } else {
-                content_vtile.push_back(MakeEmptyTab(const_cast<MarketPanelState&>(tab)));
-            }
-        }
-    }
-
-    return el::share(el::vtile(std::move(content_vtile)));
-}
-
-el::element_ptr UiBuilder::MakeTabBarOnly()
-{
-    el::htile_composite tabs_htile;
-    panel_id first_tab_bar_id = INVALID_PANEL;
-
-    for (auto& [id, tab_bar] : mTabBars) {
-        if (first_tab_bar_id == INVALID_PANEL) {
-            first_tab_bar_id = id;
-        }
-        for (size_t i = 0; i < tab_bar.tabs.size(); ++i) {
-            tabs_htile.push_back(MakeTabButton(tab_bar.tabs[i], i, tab_bar));
-        }
-    }
-
-    // Add "plus" button for adding new tabs (Material Design flat style)
-    auto add_btn = el::share(
-        el::momentary_button(
-            el::margin({6, 4, 6, 4},
-                el::icon(el::icons::plus, 0.7f)
-            )
-        )
+    auto hamburger = el::share(
+        el::toggle_icon_button(el::icons::menu, 1.0f, transparent)
     );
-    add_btn->on_click = [this, first_tab_bar_id](bool) {
-        if (mOnAddTab && first_tab_bar_id != INVALID_PANEL) {
-            mOnAddTab(first_tab_bar_id);
-        }
-    };
-    tabs_htile.push_back(add_btn);
 
-    tabs_htile.push_back(el::share(el::hstretch(1.0, el::element{})));
-
-    return el::share(
-        el::layer(
-            el::htile(std::move(tabs_htile)),
-            el::box(tab_normal_color)
-        )
-    );
-}
-
-el::element_ptr UiBuilder::MakeContentPanel()
-{
-    if (!mInstrumentsLoaded) {
-        return MakeLoadingSpinner();
-    }
-
-    if (mTabBars.empty()) {
-        return el::share(
-            el::align_center_middle(
-                el::label("No tabs available").font_size(16)
-            )
-        );
-    }
-
-    el::vtile_composite content_vtile;
-
-    for (auto& [id, tab_bar] : mTabBars) {
-        if (tab_bar.active_tab < tab_bar.tabs.size()) {
-            const auto& tab = tab_bar.tabs[tab_bar.active_tab];
-            if (tab.symbol.has_value()) {
-                content_vtile.push_back(MakeMarketPanel(tab));
-            } else {
-                content_vtile.push_back(MakeEmptyTab(const_cast<MarketPanelState&>(tab)));
-            }
-        }
-    }
-
-    return el::share(el::vtile(std::move(content_vtile)));
-}
-
-el::element_ptr UiBuilder::MakeTabBar(TabBarState& tab_bar)
-{
-    el::htile_composite tabs_htile;
-
-    for (size_t i = 0; i < tab_bar.tabs.size(); ++i) {
-        tabs_htile.push_back(MakeTabButton(tab_bar.tabs[i], i, tab_bar));
-    }
-
-    tabs_htile.push_back(el::share(el::hstretch(1.0, el::element{})));
-
-    return el::share(
-        el::layer(
-            el::htile(std::move(tabs_htile)),
-            el::box(tab_normal_color)
-        )
-    );
-}
-
-el::element_ptr UiBuilder::MakeTabButton(const MarketPanelState& tab, size_t index, TabBarState& tab_bar)
-{
-    bool is_empty = !tab.symbol.has_value();
-    std::string label_text = is_empty ? "+" : *tab.symbol;
-    bool is_active = (index == tab_bar.active_tab);
-
-    auto body_color = is_active ? tab_active_color : tab_normal_color;
-
-    panel_id tab_id = tab.id;
-    panel_id bar_id = tab_bar.id;
-
-    auto tab_btn = el::share(
-        el::momentary_button(
-            el::button_styler{label_text}
-                .body_color(body_color)
-                .text_color(text_color)
-                .corner_radius(0)
+    auto app_deck = el::share(
+        el::deck(
+            el::hold(tab_bar_area),
+            el::hold(menu_items)
         )
     );
 
-    tab_btn->on_click = [this, tab_id, bar_id, index](bool) {
-        auto it = mTabBars.find(bar_id);
-        if (it != mTabBars.end()) {
-            it->second.active_tab = index;
-            RefreshView();
+    auto deck_raw = app_deck.get();
+    hamburger->on_click = [onHamburger, deck_raw](bool state) {
+        if (auto* deck_ptr = dynamic_cast<el::deck_element*>(deck_raw)) {
+            deck_ptr->select(state ? 1 : 0);
         }
+        if (onHamburger) onHamburger(state);
     };
 
-    if (!is_empty && tab_bar.tabs.size() > 1) {
-        auto close_btn = el::share(
-            el::momentary_button(
-                el::button_styler{"x"}
-                    .size(0.7f)
-                    .body_color(body_color)
-                    .text_color(el::colors::red)
-                    .corner_radius(0)
-            )
-        );
-
-        close_btn->on_click = [this, tab_id](bool) {
-            if (mOnTabClosed) {
-                mOnTabClosed(tab_id);
-            }
-        };
-
-        return el::share(
-            el::htile(
-                el::hold(tab_btn),
-                el::hold(close_btn)
-            )
-        );
-    }
-
-    return tab_btn;
-}
-
-el::element_ptr UiBuilder::MakeMarketPanel(const MarketPanelState& panel)
-{
-    auto header = el::htile(
-        el::margin({10, 8, 10, 8},
-            el::label(*panel.symbol)
-                .font_size(16)
-                .font_color(accent_color)
-        ),
-        el::hstretch(1.0, el::element{})
-    );
-
-    auto separator = el::vsize(1, el::box(separator_color));
-
-    auto placeholder = el::align_center_middle(
-        el::label("Market data will appear here")
-            .font_size(14)
-            .font_color(dim_text_color)
-    );
-
     return el::share(
         el::layer(
-            el::vtile(
-                header,
-                separator,
-                el::vstretch(1.0, placeholder)
+            el::margin({4, 4, 4, 4},
+                el::htile(
+                    el::hold(hamburger),
+                    el::hspace(8),
+                    el::hold(app_deck)
+                )
             ),
-            el::margin({1, 1, 1, 1}, el::box(el::rgba(55, 55, 60, 255)))
+            el::box(menu_bg_color)
         )
     );
 }
 
-el::element_ptr UiBuilder::MakeEmptyTab(MarketPanelState& panel)
+el::element_ptr UiBuilder::MakeMenuItems(std::function<void()> onExit)
 {
-    auto header = el::margin({10, 10, 10, 5},
-        el::label("Select instrument to create panel")
-            .font_size(14)
-            .font_color(dim_text_color)
+    auto exit_btn = el::share(
+        el::momentary_button(
+            el::margin({8, 4, 8, 4}, el::label("Exit"))
+        )
     );
+    exit_btn->on_click = [onExit](bool) {
+        if (onExit) onExit();
+    };
 
-    auto separator = el::vsize(1, el::box(separator_color));
-
-    auto list = MakeInstrumentList(panel);
+    auto about_btn = el::share(
+        el::momentary_button(
+            el::margin({8, 4, 8, 4}, el::label("About"))
+        )
+    );
 
     return el::share(
-        el::vtile(
-            header,
-            separator,
-            el::vstretch(1.0, el::scroller(el::hold(list)))
+        el::htile(
+            el::hold(exit_btn),
+            el::hspace(4),
+            el::hold(about_btn),
+            el::hstretch(1.0, el::element{})
         )
     );
-}
-
-el::element_ptr UiBuilder::MakeInstrumentList(MarketPanelState& panel)
-{
-    el::vtile_composite list_vtile;
-    panel_id pid = panel.id;
-
-    for (const auto& symbol : mInstruments) {
-        std::string sym_copy = symbol;
-
-        auto item_btn = el::share(
-            el::momentary_button(
-                el::button_styler{symbol}
-                    .align_left()
-                    .body_color(tab_normal_color)
-                    .active_body_color(tab_hover_color)
-                    .text_color(text_color)
-                    .corner_radius(0)
-            )
-        );
-
-        item_btn->on_click = [this, pid, sym_copy](bool) {
-            if (mOnInstrumentSelected) {
-                mOnInstrumentSelected(pid, sym_copy);
-            }
-        };
-
-        list_vtile.push_back(item_btn);
-    }
-
-    return el::share(el::vtile(std::move(list_vtile)));
 }
 
 el::element_ptr UiBuilder::MakeLoadingSpinner()
@@ -384,6 +133,152 @@ el::element_ptr UiBuilder::MakeLoadingSpinner()
                 el::vspace(10),
                 el::label("Loading instruments...").font_size(14).font_color(dim_text_color)
             )
+        )
+    );
+}
+
+el::element_ptr UiBuilder::MakePanelTypeSelector(
+    uint32_t icon_code,
+    std::function<void(PanelType)> onTypeSelected)
+{
+    auto popup = el::share(
+        el::momentary_button<AutoPositionMenu>(
+            el::margin({4, 2, 4, 2}, el::icon(icon_code, 0.7f))
+        )
+    );
+
+    el::vtile_composite menu_items;
+    for (auto type : all_panel_types) {
+        auto item = el::menu_item(PanelTypeName(type));
+        item.on_click = [onTypeSelected, type]() {
+            if (onTypeSelected) onTypeSelected(type);
+        };
+        menu_items.push_back(el::share(std::move(item)));
+    }
+
+    popup->menu(
+        el::layer(
+            el::vtile(std::move(menu_items)),
+            el::panel{}
+        )
+    );
+
+    return popup;
+}
+
+std::pair<el::element_ptr, std::shared_ptr<el::deck_composite>> UiBuilder::MakePanel(PanelType type, std::function<void(PanelType)> onChangeType, std::function<void(PanelType, SplitDirection)> onSplit)
+{
+    auto deck = std::make_shared<el::deck_composite>();
+    deck->push_back(MakeWaitingIndicator());
+    deck->push_back(MakePanelContent(type));
+    deck->select(0);
+
+    auto root = el::share(
+        el::vtile(
+            el::hold(MakePanelHeader(type, std::move(onChangeType), onSplit)),
+            el::vstretch(1.0, el::hold(deck)),
+            el::hold(MakePanelFooter(std::move(onSplit)))
+        )
+    );
+
+    return std::make_pair(std::move(root), std::move(deck));
+}
+
+el::element_ptr UiBuilder::MakeVerticalSplit(el::element_ptr left, el::element_ptr right)
+{
+    return el::share(
+        el::htile(
+            el::hstretch(1.0, el::hold(left)),
+            el::hold(MakeDivider(false)),
+            el::hstretch(1.0, el::hold(right))
+        )
+    );
+}
+
+el::element_ptr UiBuilder::MakeHorizontalSplit(el::element_ptr top, el::element_ptr bottom)
+{
+    return el::share(
+        el::vtile(
+            el::vstretch(1.0, el::hold(top)),
+            el::hold(MakeDivider(true)),
+            el::vstretch(1.0, el::hold(bottom))
+        )
+    );
+}
+
+el::element_ptr UiBuilder::MakeDivider(bool horizontal)
+{
+    if (horizontal) {
+        return el::share(el::hmin_size(1, el::vsize(4, el::box(divider_color))));
+    }
+    return el::share(el::vmin_size(1, el::hsize(4, el::box(divider_color))));
+}
+
+el::element_ptr UiBuilder::MakePanelHeader(PanelType type, std::function<void(PanelType)> onChangeType, std::function<void(PanelType, SplitDirection)> onSplit)
+{
+    return el::share(
+        el::layer(
+            el::margin({2, 1, 2, 1},
+                el::htile(
+                    el::hold(MakePanelTypeSelector(el::icons::down_dir, std::move(onChangeType))),
+                    el::hstretch(1.0,
+                        el::align_center(
+                            el::label(PanelTypeName(type))
+                                .font_size(12)
+                                .font_color(label_text_color)
+                        )
+                    ),
+                    el::hold(MakePanelTypeSelector(el::icons::plus, [onSplit](PanelType t) {
+                        if (onSplit) onSplit(t, SplitDirection::Vertical);
+                    }))
+                )
+            ),
+            el::box(header_bg_color)
+        )
+    );
+}
+
+el::element_ptr UiBuilder::MakePanelFooter(std::function<void(PanelType, SplitDirection)> onSplit)
+{
+    return el::share(
+        el::layer(
+            el::margin({2, 1, 2, 1},
+                el::htile(
+                    el::hold(MakePanelTypeSelector(el::icons::plus, [onSplit](PanelType t) {
+                        if (onSplit) onSplit(t, SplitDirection::Horizontal);
+                    })),
+                    el::hstretch(1.0, el::element{})
+                )
+            ),
+            el::box(footer_bg_color)
+        )
+    );
+}
+
+el::element_ptr UiBuilder::MakeWaitingIndicator()
+{
+    return el::share(
+        el::layer(
+            el::align_center_middle(
+                el::label("Loading...")
+                    .font_size(16)
+                    .font_color(dim_text_color)
+            ),
+            el::box(content_bg_color)
+        )
+    );
+}
+
+el::element_ptr UiBuilder::MakePanelContent(PanelType type)
+{
+    return el::share(
+        el::layer(
+            el::align_center_middle(
+                el::label(PanelTypeName(type))
+                    .font_size(24)
+                    .font_color(dim_text_color)
+            ),
+            el::box(content_bg_color)
         )
     );
 }

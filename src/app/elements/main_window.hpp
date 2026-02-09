@@ -14,7 +14,14 @@
 #pragma once
 
 #include <memory>
+#include <functional>
+#include <unordered_map>
+
 #include <elements.hpp>
+#include "content_panel.hpp"
+#include "split_direction.hpp"
+#include "tab_bar.hpp"
+#include "panel_node.hpp"
 #include "ui_builder.hpp"
 
 namespace scratcher::elements {
@@ -22,26 +29,45 @@ namespace scratcher::elements {
 class MainWindow
 {
 public:
-    explicit MainWindow();
+    using on_panel_created_t = std::function<cockpit::panel_id(std::shared_ptr<cockpit::ContentPanel>)>;
+    using on_panel_closed_t = std::function<void(cockpit::panel_id)>;
+
+    explicit MainWindow(UiBuilder& builder);
     ~MainWindow();
 
     int Run();
 
-    UiBuilder& GetUiBuilder() { return mUiBuilder; }
+    void SetOnPanelCreated(on_panel_created_t handler);
+    void SetOnPanelClosed(on_panel_closed_t handler);
 
 private:
     void SetupContent();
-    cycfi::elements::element_ptr MakeAppBar();
-    cycfi::elements::element_ptr MakeMenuItems();
+    void OnNewTab(cockpit::PanelType type);
+
+    std::shared_ptr<LeafPanelNode> MakeLeaf(cockpit::PanelType type);
+
+    void HandleChangeType(std::shared_ptr<LeafPanelNode> node, cockpit::PanelType newType);
+    void HandleSplit(std::shared_ptr<LeafPanelNode> node, cockpit::PanelType newType, SplitDirection dir);
+
+    void ReplaceNode(std::shared_ptr<PanelNode> oldNode, std::shared_ptr<PanelNode> newNode);
 
     cycfi::elements::app mApp;
     cycfi::elements::window mWindow;
-    std::unique_ptr<cycfi::elements::view> mView;
+    std::shared_ptr<cycfi::elements::view> mView;
+    UiBuilder& mBuilder;
 
-    UiBuilder mUiBuilder;
+    on_panel_created_t mOnPanelCreated;
+    on_panel_closed_t mOnPanelClosed;
+
+    std::unique_ptr<TabBar> mTabBar;
+
+    struct TabRoot {
+        std::shared_ptr<PanelNode> node;
+        std::shared_ptr<cycfi::elements::deck_composite> slot;
+    };
+    std::unordered_map<tab_id, TabRoot> mTabRoots;
 
     bool mMenuVisible = false;
-    cycfi::elements::element_ptr mAppDeck;
 };
 
 } // namespace scratcher::elements

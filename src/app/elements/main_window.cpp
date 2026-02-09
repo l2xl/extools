@@ -12,133 +12,76 @@
 // -----END PGP PUBLIC KEY BLOCK-----
 
 #include "main_window.hpp"
-#include <cstdlib>
-#include <cstdio>
-#include <array>
-#include <iostream>
 
 namespace scratcher::elements {
 
 namespace el = cycfi::elements;
+using cockpit::PanelType;
+using cockpit::PanelTypeName;
+using cockpit::panel_id;
 
 namespace {
 
-std::string ExecuteCommand(const char* cmd)
+bool ContainsNode(PanelNode* root, PanelNode* target)
 {
-    std::array<char, 256> buffer;
-    std::string result;
-    FILE* pipe = popen(cmd, "r");
-    if (!pipe) return "";
-    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
-        result += buffer.data();
-    }
-    pclose(pipe);
-    while (!result.empty() && (result.back() == '\n' || result.back() == '\r')) {
-        result.pop_back();
-    }
-    return result;
+    if (root == target) return true;
+    if (root->IsLeaf()) return false;
+    auto* split = static_cast<SplitPanelNode*>(root);
+    return ContainsNode(split->First().get(), target)
+        || ContainsNode(split->Second().get(), target);
 }
 
-bool IsDarkModePreferred()
+class ElementsContentPanel : public cockpit::ContentPanel, public std::enable_shared_from_this<ElementsContentPanel>
 {
-    // Method 1: GNOME color-scheme setting (modern GNOME 42+)
-    std::string scheme = ExecuteCommand("gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null");
-    if (scheme.find("dark") != std::string::npos) {
-        return true;
-    }
-    if (scheme.find("light") != std::string::npos) {
-        return false;
-    }
+public:
+    ElementsContentPanel(cockpit::PanelType type, std::weak_ptr<cycfi::elements::view> view, std::shared_ptr<cycfi::elements::deck_composite> overlayDeck)
+    : ContentPanel(type) , mView(std::move(view)) , mOverlayDeck(std::move(overlayDeck))
+    {}
 
-    // Method 2: GTK theme name contains "dark"
-    std::string theme = ExecuteCommand("gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null");
-    if (theme.find("dark") != std::string::npos || theme.find("Dark") != std::string::npos) {
-        return true;
-    }
+    void SetDataReady(bool ready) override
+    {
+        auto ref = weak_from_this();
+        auto v = mView.lock();
+        if (!v) return;
 
-    // Method 3: Environment variable
-    const char* gtk_theme = std::getenv("GTK_THEME");
-    if (gtk_theme) {
-        std::string theme_str(gtk_theme);
-        if (theme_str.find("dark") != std::string::npos || theme_str.find("Dark") != std::string::npos) {
-            return true;
-        }
-    }
-
-    // Method 4: Check freedesktop portal color scheme
-    std::string portal = ExecuteCommand(
-        "gdbus call --session --dest org.freedesktop.portal.Desktop "
-        "--object-path /org/freedesktop/portal/desktop "
-        "--method org.freedesktop.portal.Settings.Read org.freedesktop.appearance color-scheme 2>/dev/null"
-    );
-    // Portal returns: (<uint32 1>,) for dark, (<uint32 2>,) for light, (<uint32 0>,) for no preference
-    if (portal.find("uint32 1") != std::string::npos) {
-        return true;
+        v->post([=]() {
+            if (auto self = ref.lock()) {
+                if (auto v = self->mView.lock()) {
+                    if (self->mOverlayDeck && self->mOverlayDeck->size() >= 2) {
+                        self->mOverlayDeck->select(ready ? 1 : 0);
+                        v->layout();
+                        v->refresh();
+                    }
+                }
+            }
+        });
     }
 
-    return false;
-}
+private:
+    std::weak_ptr<cycfi::elements::view> mView;
+    std::shared_ptr<cycfi::elements::deck_composite> mOverlayDeck;
+};
 
-// std::string GetCurrentGtkTheme()
-// {
-//     std::string theme = ExecuteCommand("gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null");
-//     // Remove quotes from gsettings output: 'Adwaita-dark' -> Adwaita-dark
-//     if (theme.size() >= 2 && theme.front() == '\'' && theme.back() == '\'') {
-//         theme = theme.substr(1, theme.size() - 2);
-//     }
-//     return theme.empty() ? "Adwaita" : theme;
-// }
 
-// void ApplyElementsDarkTheme()
-// {
-//     el::theme thm = el::get_theme();
-//
-//     thm.panel_color = el::rgba(45, 45, 48, 255);
-//     thm.frame_color = el::rgba(70, 70, 75, 255);
-//     thm.frame_hilite_color = el::rgba(100, 100, 105, 255);
-//     thm.scrollbar_color = el::rgba(80, 80, 85, 200);
-//     thm.default_button_color = el::rgba(60, 60, 65, 255);
-//     thm.controls_color = el::rgba(55, 55, 60, 255);
-//     thm.indicator_color = el::rgba(80, 140, 200, 255);
-//     thm.indicator_bright_color = el::rgba(100, 160, 220, 255);
-//     thm.indicator_hilite_color = el::rgba(120, 180, 240, 255);
-//     thm.basic_font_color = el::rgba(220, 220, 220, 255);
-//     thm.heading_font_color = el::rgba(240, 240, 240, 255);
-//     thm.label_font_color = el::rgba(200, 200, 200, 255);
-//     thm.icon_color = el::rgba(180, 180, 180, 255);
-//     thm.icon_button_color = el::rgba(50, 50, 55, 255);
-//     thm.text_box_font_color = el::rgba(220, 220, 220, 255);
-//     thm.text_box_hilite_color = el::rgba(80, 120, 180, 180);
-//     thm.text_box_caret_color = el::rgba(220, 220, 220, 255);
-//     thm.inactive_font_color = el::rgba(128, 128, 128, 255);
-//     thm.ticks_color = el::rgba(100, 100, 105, 255);
-//     thm.major_grid_color = el::rgba(80, 80, 85, 255);
-//     thm.minor_grid_color = el::rgba(60, 60, 65, 255);
-//
-//     el::set_theme(thm);
-// }
-//
-// void ApplyElementsLightTheme()
-// {
-//     el::theme thm;
-//     el::set_theme(thm);
-// }
+
 
 } // anonymous namespace
 
-MainWindow::MainWindow()
+MainWindow::MainWindow(UiBuilder& builder)
     : mApp("Scratcher")
     , mWindow(mApp.name())
+    , mBuilder(builder)
 {
     mWindow.on_close = [this]() { mApp.stop(); };
-
-    mView = std::make_unique<el::view>(mWindow);
-    mUiBuilder.SetView(mView.get());
+    mView = std::make_shared<el::view>(mWindow);
 
     SetupContent();
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow()
+{
+    mTabRoots.clear();
+}
 
 int MainWindow::Run()
 {
@@ -146,95 +89,140 @@ int MainWindow::Run()
     return 0;
 }
 
-el::element_ptr MainWindow::MakeMenuItems()
+void MainWindow::SetOnPanelCreated(on_panel_created_t handler)
 {
-    auto exit_btn = el::share(
-        el::momentary_button(
-            el::margin({8, 4, 8, 4},
-                el::label("Exit")
-            )
-        )
-    );
-    exit_btn->on_click = [this](bool) {
-        mApp.stop();
-    };
-
-    auto about_btn = el::share(
-        el::momentary_button(
-            el::margin({8, 4, 8, 4},
-                el::label("About")
-            )
-        )
-    );
-    about_btn->on_click = [](bool) {
-        // TODO: Show about dialog
-    };
-
-    return el::share(
-        el::htile(
-            el::hold(exit_btn),
-            el::hspace(4),
-            el::hold(about_btn),
-            el::hstretch(1.0, el::element{})
-        )
-    );
+    mOnPanelCreated = std::move(handler);
 }
 
-el::element_ptr MainWindow::MakeAppBar()
+void MainWindow::SetOnPanelClosed(on_panel_closed_t handler)
 {
-    auto& thm = el::get_theme();
-    auto menu_bg_color = thm.panel_color;
-    auto transparent = el::rgba(0, 0, 0, 0);
-
-    auto hamburger = el::share(
-        el::toggle_icon_button(el::icons::menu, 1.0f, transparent)
-    );
-
-    auto menu_items = MakeMenuItems();
-    auto tab_bar = mUiBuilder.MakeTabBarOnly();
-
-    mAppDeck = el::share(
-        el::deck(
-            el::hold(tab_bar),
-            el::hold(menu_items)
-        )
-    );
-
-    hamburger->on_click = [this](bool state) {
-        mMenuVisible = state;
-        if (auto* deck_ptr = dynamic_cast<el::deck_element*>(mAppDeck.get())) {
-            deck_ptr->select(mMenuVisible ? 1 : 0);
-            mView->refresh();
-        }
-    };
-
-    return el::share(
-        el::layer(
-            el::margin({4, 4, 4, 4},
-                el::htile(
-                    el::hold(hamburger),
-                    el::hspace(8),
-                    el::hold(mAppDeck)
-                )
-            ),
-            el::box(menu_bg_color)
-        )
-    );
+    mOnPanelClosed = std::move(handler);
 }
 
 void MainWindow::SetupContent()
 {
-    auto app_bar = MakeAppBar();
-    auto content = mUiBuilder.MakeContentPanel();
+    mTabBar = std::make_unique<TabBar>(mView);
+
+    mTabBar->SetPlusButton(mBuilder.MakePanelTypeSelector(
+        cycfi::elements::icons::plus, [this](PanelType type) { OnNewTab(type); }
+    ));
+
+    mTabBar->onTabClosed = [this](tab_id tid) {
+        mTabRoots.erase(tid);
+        mTabBar->RemoveTab(tid);
+    };
+
+    auto tab_bar_element = mTabBar->Build();
+
+    auto menu_items = mBuilder.MakeMenuItems([this]() { mApp.stop(); });
+    auto app_bar = mBuilder.MakeAppBar(
+        el::share(el::hstretch(1.0, el::element{})),
+        menu_items,
+        [this](bool state) {
+            mMenuVisible = state;
+            mView->refresh();
+        });
 
     mView->content(
-        el::layer(
-            el::vtile(
-                el::hold(app_bar),
-                el::vstretch(1.0, el::hold(content))
-             )
+        el::vtile(
+            el::hold(app_bar),
+            el::vstretch(1.0, el::hold(tab_bar_element))
         )
     );
+
+    OnNewTab(PanelType::TradeHistory);
+}
+
+void MainWindow::OnNewTab(PanelType type)
+{
+    auto leaf = MakeLeaf(type);
+
+    auto slot = std::make_shared<el::deck_composite>();
+    slot->push_back(leaf->GetElement());
+    slot->select(0);
+
+    tab_id tid = mTabBar->AddTab(PanelTypeName(type), el::share(el::hold(slot)));
+    mTabRoots[tid] = TabRoot{leaf, slot};
+}
+
+std::shared_ptr<LeafPanelNode> MainWindow::MakeLeaf(PanelType type)
+{
+    auto leaf = std::make_shared<LeafPanelNode>(mView, type);
+
+    auto onChangeType = [this, w = std::weak_ptr(leaf)](PanelType newType) {
+        if (auto n = w.lock()) HandleChangeType(n, newType);
+    };
+    auto onSplit = [this, w = std::weak_ptr(leaf)](PanelType newType, SplitDirection dir) {
+        if (auto n = w.lock()) HandleSplit(n, newType, dir);
+    };
+
+    auto [element, deck] = mBuilder.MakePanel(type, std::move(onChangeType), std::move(onSplit));
+
+    auto panel = std::make_shared<ElementsContentPanel>(type, mView, std::move(deck));
+
+    panel_id pid = 0;
+    if (mOnPanelCreated)
+        pid = mOnPanelCreated(std::move(panel));
+
+    leaf->Initialize(std::move(element), pid, [this, pid]() {
+        if (mOnPanelClosed) mOnPanelClosed(pid);
+    });
+
+    return leaf;
+}
+
+void MainWindow::HandleChangeType(std::shared_ptr<LeafPanelNode> node, PanelType newType)
+{
+    auto newLeaf = MakeLeaf(newType);
+    ReplaceNode(node, newLeaf);
+}
+
+void MainWindow::HandleSplit(std::shared_ptr<LeafPanelNode> node, PanelType newType, SplitDirection dir)
+{
+    auto newLeaf = MakeLeaf(newType);
+    auto split = std::make_shared<SplitPanelNode>(mView, dir, node, newLeaf);
+    ReplaceNode(node, split);
+}
+
+void MainWindow::ReplaceNode(std::shared_ptr<PanelNode> oldNode, std::shared_ptr<PanelNode> newNode)
+{
+    // Check if oldNode is a tab root
+    for (auto& [tid, root] : mTabRoots) {
+        if (root.node == oldNode) {
+            root.node = newNode;
+            root.slot->clear();
+            root.slot->push_back(newNode->GetElement());
+            root.slot->select(0);
+            auto v = mView;
+            v->layout();
+            v->refresh();
+            return;
+        }
+    }
+
+    // Search for parent split containing oldNode
+    for (auto& [tid, root] : mTabRoots) {
+        if (!root.node->IsLeaf() && ContainsNode(root.node.get(), oldNode.get())) {
+            // DFS to find the direct parent split
+            std::function<std::shared_ptr<SplitPanelNode>(std::shared_ptr<PanelNode>)> findParent;
+            findParent = [&](std::shared_ptr<PanelNode> current) -> std::shared_ptr<SplitPanelNode> {
+                if (current->IsLeaf()) return nullptr;
+                auto split = std::static_pointer_cast<SplitPanelNode>(current);
+                if (split->First() == oldNode || split->Second() == oldNode)
+                    return split;
+                if (auto found = findParent(split->First())) return found;
+                return findParent(split->Second());
+            };
+
+            if (auto parent = findParent(root.node)) {
+                parent->ReplaceChild(oldNode, newNode);
+                auto v = mView;
+                v->layout();
+                v->refresh();
+                return;
+            }
+        }
+    }
 }
 
 } // namespace scratcher::elements

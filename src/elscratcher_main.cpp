@@ -38,9 +38,18 @@ int main(int argc, char* argv[])
         auto config = std::make_shared<Config>(argc, argv);
         auto sched = scratcher::scheduler::create(2);
         auto database = std::make_shared<SQLite::Database>(config->DataDir() + "/market_data.sqlite", SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
-        scratcher::elements::MainWindow window;
 
-        auto cockpit = scratcher::cockpit::TradeCockpit::Create(window.GetUiBuilder(), sched, config, database);
+        scratcher::elements::UiBuilder builder;
+        scratcher::elements::MainWindow window(builder);
+
+        auto cockpit = scratcher::cockpit::TradeCockpit::Create(sched, config, database);
+
+        window.SetOnPanelCreated([&cockpit](auto panel) {
+            return cockpit->RegisterPanel(std::move(panel));
+        });
+        window.SetOnPanelClosed([&cockpit](scratcher::cockpit::panel_id pid) {
+            cockpit->UnregisterPanel(pid);
+        });
 
         return window.Run();
     }

@@ -23,9 +23,9 @@ include(cmake/CPM.cmake)
 
 set(CMAKE_VERBOSE_MAKEFILE on)
 
-set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
+#set(CMAKE_AUTOUIC ON)
+#set(CMAKE_AUTOMOC ON)
+#set(CMAKE_AUTORCC ON)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -37,7 +37,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #        GITHUB_REPOSITORY "qt/qt5")
 #CPMAddPackage("gh:qt/qt5@6.9.0")
 
-find_package(Qt6 6 CONFIG REQUIRED COMPONENTS Core Widgets Svg)
+#find_package(Qt6 6 CONFIG REQUIRED COMPONENTS Core Widgets Svg)
 
 find_package(OpenSSL REQUIRED)
 
@@ -80,61 +80,16 @@ CPMAddPackage(
 )
 
 # Add SDL3 for ImGui windowing with proper Wayland support
-CPMAddPackage(
-    NAME SDL3
-    GITHUB_REPOSITORY libsdl-org/SDL
-    GIT_TAG main
-    OPTIONS
-        "SDL_TEST OFF"
-        "SDL_SHARED ON"
-        "SDL_STATIC OFF"
-        "SDL_X11_XTEST OFF"
-)
-
-# Add Dear ImGui
-CPMAddPackage(
-    NAME ImGui
-    GITHUB_REPOSITORY ocornut/imgui
-    GIT_TAG docking
-    DOWNLOAD_ONLY YES
-)
-
-if(ImGui_ADDED)
-    # Create ImGui library
-    add_library(imgui STATIC
-        ${ImGui_SOURCE_DIR}/imgui.cpp
-        ${ImGui_SOURCE_DIR}/imgui_draw.cpp
-        ${ImGui_SOURCE_DIR}/imgui_tables.cpp
-        ${ImGui_SOURCE_DIR}/imgui_widgets.cpp
-        ${ImGui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-        ${ImGui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
-    )
-    target_include_directories(imgui PUBLIC
-        ${ImGui_SOURCE_DIR}
-        ${ImGui_SOURCE_DIR}/backends
-    )
-    target_link_libraries(imgui PUBLIC SDL3::SDL3)
-    find_package(OpenGL REQUIRED)
-    target_link_libraries(imgui PUBLIC OpenGL::GL)
-endif()
-
-# Add ImPlot
-CPMAddPackage(
-    NAME implot
-    GITHUB_REPOSITORY epezent/implot
-    GIT_TAG v0.17
-    DOWNLOAD_ONLY YES
-)
-
-if(implot_ADDED)
-    # Create ImPlot library
-    add_library(implot STATIC
-        ${implot_SOURCE_DIR}/implot.cpp
-        ${implot_SOURCE_DIR}/implot_items.cpp
-    )
-    target_include_directories(implot PUBLIC ${implot_SOURCE_DIR})
-    target_link_libraries(implot PUBLIC imgui)
-endif()
+#CPMAddPackage(
+#    NAME SDL3
+#    GITHUB_REPOSITORY libsdl-org/SDL
+#    GIT_TAG main
+#    OPTIONS
+#        "SDL_TEST OFF"
+#        "SDL_SHARED ON"
+#        "SDL_STATIC OFF"
+#        "SDL_X11_XTEST OFF"
+#)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CAIRO cairo)
@@ -191,50 +146,33 @@ set(core_SOURCES
 
 add_library(core STATIC ${core_SOURCES})
 
-set(PROJECT_SOURCES
-        src/main.cpp
-        src/config.hpp
-        src/config.cpp
-        src/widget/scratch_widget.cpp
-        src/widget/scratch_widget.h
-        src/widget/content_frame.h
-        src/widget/content_frame.cpp
-        src/widget/instrument_dropbox.h
-        src/widget/instrument_dropbox.cpp
-        src/widget/scratcher.hpp
-        src/widget/quote_scratcher.cpp
-        src/widget/quote_scratcher.hpp
-        src/app/trade_cockpit.cpp
-        src/app/trade_cockpit.h
-        src/app/trade_cockpit.ui
-        src/app/view_controller.hpp
-        src/app/market_controller.cpp
-        src/app/market_controller.hpp
-)
+#set(PROJECT_SOURCES
+#        src/main.cpp
+#        src/config.hpp
+#        src/config.cpp
+#        src/widget/scratch_widget.cpp
+#        src/widget/scratch_widget.h
+#        src/widget/content_frame.h
+#        src/widget/content_frame.cpp
+#        src/widget/instrument_dropbox.h
+#        src/widget/instrument_dropbox.cpp
+#        src/widget/scratcher.hpp
+#        src/widget/quote_scratcher.cpp
+#        src/widget/quote_scratcher.hpp
+#        src/app/trade_cockpit.cpp
+#        src/app/trade_cockpit.h
+#        src/app/trade_cockpit.ui
+#        src/app/view_controller.hpp
+#        src/app/market_controller.cpp
+#        src/app/market_controller.hpp
+#)
+#
+#qt_add_executable(exscratcher MANUAL_FINALIZATION ${PROJECT_SOURCES})
 
-qt_add_executable(exscratcher MANUAL_FINALIZATION ${PROJECT_SOURCES})
-
-# Add imscratcher executable (ImGui-based application)
-add_executable(imscratcher
-        src/imscratcher_main.cpp
-        src/app/imgui/main_window.cpp
-        src/app/imgui/main_window.hpp
-        src/app/imgui/ui_builder.hpp
-        src/app/imgui/ui_builder.cpp
-        src/app/imgui/system_theme.hpp
-        src/app/imgui/system_theme.cpp
-        src/cockpit/trade_cockpit.hpp
-        src/cockpit/trade_cockpit.cpp
-        src/config.hpp
-        src/config.cpp
-)
 
 # Find fontconfig for system font detection
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
-
-target_link_libraries(imscratcher PRIVATE imgui implot core glaze::glaze ${CMAKE_DL_LIBS} ${FONTCONFIG_LIBRARIES})
-target_include_directories(imscratcher PRIVATE ${FONTCONFIG_INCLUDE_DIRS})
 
 # Add elscratcher executable (Elements-based application)
 add_executable(elscratcher
@@ -243,7 +181,13 @@ add_executable(elscratcher
             src/app/elements/main_window.hpp
             src/app/elements/ui_builder.hpp
             src/app/elements/ui_builder.cpp
-            src/app/ui_builder.hpp
+            src/app/elements/split_direction.hpp
+            src/cockpit/content_panel.hpp
+            src/cockpit/content_panel.cpp
+            src/app/elements/tab_bar.hpp
+            src/app/elements/tab_bar.cpp
+            src/app/elements/panel_node.hpp
+            src/app/elements/panel_node.cpp
             src/cockpit/trade_cockpit.hpp
             src/cockpit/trade_cockpit.cpp
             src/config.hpp
@@ -288,16 +232,16 @@ target_link_libraries(core PRIVATE TBB::tbb)
 target_link_libraries(core PUBLIC SQLiteCpp)
 target_link_libraries(core PUBLIC glaze::glaze)
 
-target_link_libraries(exscratcher PRIVATE core Qt6::Widgets Qt6::Svg)
+#target_link_libraries(exscratcher PRIVATE core Qt6::Widgets Qt6::Svg)
 
-include(GNUInstallDirs)
-install(TARGETS exscratcher
-    BUNDLE DESTINATION .
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+#include(GNUInstallDirs)
+#install(TARGETS exscratcher
+#    BUNDLE DESTINATION .
+#    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+#    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+#)
 
-qt_finalize_executable(exscratcher)
+#qt_finalize_executable(exscratcher)
 
 if(NOT ANDROID)
 
