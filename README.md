@@ -6,7 +6,7 @@ This is the general purpose standalone exchange client created by engineers for 
 
 It aims to provide
 
-1. Highly modular and flexible GUI created with QT
+1. Highly modular and flexible GUI
 
 2. Clean trading widget which gives undistorted trading view with maximun information for a trader
 
