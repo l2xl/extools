@@ -3,4 +3,5 @@ description: |
   Entity fields holding an empty std::optional shall be absent from the emitted JSON body.
 parents: [DATAHUB-060]
 order: 20
-tests: ~
+tests: 857f1c1c55d33c33a30f16d5580e3d643cbc702d3a4a025385b2596adb7bb2a5
+reviewed: 3fa50f401275b73869bbcb1dc05234e995cd39a4ab497ac3bf005d5fe552f8f8

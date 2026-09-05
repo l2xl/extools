@@ -3,4 +3,5 @@ description: |
   A query value shall carry the same text as the corresponding JSON scalar with enclosing quotes stripped, so enums, currency values and numbers format identically on both paths.
 parents: [DATAHUB-060]
 order: 70
-tests: ~
+tests: 3af6b19e82659779c58e7d1d0f01903ff924af29a0f62520897a0951cea6e3a2
+reviewed: 9fd990bc870dcbe14b1d96cb7b4a8dc2c281623c91792fbd5bf7196bf50f8624

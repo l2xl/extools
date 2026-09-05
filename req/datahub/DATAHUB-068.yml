@@ -3,4 +3,5 @@ description: |
   Characters outside the RFC 3986 unreserved set shall be percent-encoded in the emitted key=value pairs.
 parents: [DATAHUB-060]
 order: 80
-tests: ~
+tests: ab7144713693503008af6eb6ba23d152938c4e5c2c61c85f2494743614431ca0
+reviewed: 78742a56c88bb025e9d058a726ee128d6d23a5a1c6e049ebec14c52ce0e1cf26

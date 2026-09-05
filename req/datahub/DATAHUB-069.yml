@@ -3,4 +3,5 @@ description: |
   An entity whose fields are all empty optionals shall yield an empty query string and an empty body.
 parents: [DATAHUB-060]
 order: 90
-tests: ~
+tests: 49853828e3eb810d4e3bc0701ef69042d0986a9ff505043d9cfacd0bc27a79e6
+reviewed: e2ac3cc9bbc8c67319d62016d3d0d49ecfca7b28fbcf037cf5db08b8b559d997

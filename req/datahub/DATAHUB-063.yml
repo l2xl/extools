@@ -3,4 +3,5 @@ description: |
   A json_body_encoder constructed with a projection shall serialise the projection result rather than the entity itself.
 parents: [DATAHUB-060]
 order: 30
-tests: ~
+tests: 21e0aaffd9b9f2411997b9fa3a5a88abbd0165c154e0f0ac339b294e238193c0
+reviewed: 8f83ddf3d85ee5330c3177b8fd5e37a17abde1df60d9b6b81bbd9cf216bb5c23

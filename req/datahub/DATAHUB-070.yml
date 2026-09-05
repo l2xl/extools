@@ -3,4 +3,5 @@ description: |
   An encoder shall invoke its acceptor exactly once per entity with the query string as the first argument and the body as the second.
 parents: [DATAHUB-060]
 order: 100
-tests: ~
+tests: 479cfc689bc1b97d739a85c0553149a8c74af8867312b783ab63e093c8e36f69
+reviewed: 1e8109b3d4bc78a66a8d77aa5697f1d989a7a32788a684132e8ef3d713fa2fda

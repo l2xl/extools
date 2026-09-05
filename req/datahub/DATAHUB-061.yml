@@ -3,4 +3,5 @@ description: |
   json_body_encoder shall serialise the entity to JSON and hand it to the acceptor as the body with an empty query string.
 parents: [DATAHUB-060]
 order: 10
-tests: ~
+tests: 215d93d9a6d073b1f89e51f92aade535880166fdc549d23d6fa8908d8d484af8
+reviewed: 0c7065e5e3397b728d2123cf851adbd5eee40baef12008f51bbfa138e2936182

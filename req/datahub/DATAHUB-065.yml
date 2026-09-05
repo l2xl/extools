@@ -3,4 +3,5 @@ description: |
   url_query_encoder shall emit one key=value pair per entity field in declaration order, joined by ampersands.
 parents: [DATAHUB-060]
 order: 50
-tests: ~
+tests: bd6bb9cc5aad88fd99f488ca66aa975f09e953e42885a2b6083f832d1627e461
+reviewed: cc084bf392e6497eb03abec8cd59febb62524a48ed56bd77dfea90895d72bbdb

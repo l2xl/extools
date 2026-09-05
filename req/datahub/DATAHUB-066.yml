@@ -3,4 +3,5 @@ description: |
   Entity fields holding an empty std::optional shall contribute no key=value pair to the query string.
 parents: [DATAHUB-060]
 order: 60
-tests: ~
+tests: a11c6fd20a9dd4e834ca822405fb179d8e5b8eea310c9d8ba219d292cf40ed41
+reviewed: f8a2336307c0e6810bb6f429b4ef343a435762f2a1bd4036b011fdb8aa31c8a5
