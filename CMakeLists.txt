@@ -216,7 +216,7 @@ include_directories(
 
 target_link_libraries(core PRIVATE ${Boost_LIBRARIES})
 target_link_libraries(core PRIVATE OpenSSL::SSL)
-target_link_libraries(core PRIVATE TBB::tbb)
+target_link_libraries(core PUBLIC TBB::tbb)
 target_link_libraries(core PUBLIC SQLiteCpp)
 target_link_libraries(core PUBLIC glaze::glaze)
 target_link_libraries(core PUBLIC Thorvg::thorvg)
