@@ -72,8 +72,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: build-ci
-          key: build-ci-clang23-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
-          restore-keys: build-ci-clang23-
+          key: build-ci-clang23-ninja-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: build-ci-clang23-ninja-
 
       - name: Configure (CMake)
         # -Wunused-template suppression for oneTBB (vendored, not our code)
@@ -81,7 +81,7 @@ jobs:
         # TBB's own -Wall -Wextra -Werror is appended after CMAKE_CXX_FLAGS
         # on the command line, so a flag passed from this step can't win.
         run: >
-          cmake -B build-ci -DCMAKE_BUILD_TYPE=Debug
+          cmake -B build-ci -G Ninja -DCMAKE_BUILD_TYPE=Debug
           -DCMAKE_C_COMPILER=clang-23 -DCMAKE_CXX_COMPILER=clang++-23
 
       - name: Build unit tests
