@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-venv python3-pip \
       libboost-dev libboost-context-dev libboost-system-dev libboost-url-dev \
       libssl-dev libfontconfig-dev \
+      libcairo2-dev libgtk-3-dev libwebp-dev \
       libstdc++-14-dev \
     && rm -rf /var/lib/apt/lists/*
 
