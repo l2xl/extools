@@ -97,6 +97,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 ci/report_build_failure.py build-ci/build.log
 
+      # The Check Run can only carry an excerpt (the Checks API caps a summary at
+      # 65535 characters), and raw job logs need repo-admin auth to download, so
+      # the untruncated log travels as an artifact anyone with repo access can pull.
+      - name: Upload build log
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-log-build
+          path: build-ci/build.log
+          if-no-files-found: warn
+          retention-days: 14
+
       # Jobs run on fresh runners: the built tree travels between jobs as a tarball
       # artifact (tar preserves the executable bits that upload-artifact strips).
       - name: Pack built tree
@@ -178,6 +190,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 ci/report_build_failure.py build-ci/ctest.log
+
+      - name: Upload ctest log
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-log-ctest
+          path: build-ci/ctest.log
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload C++ coverage records
         if: ${{ !cancelled() }}
