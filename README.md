@@ -1,10 +1,14 @@
 # Open Trader
 
+Looking for angels! [Online Pitch-Deck](https://xscratcher.space/investor/) if you are interested investing Open Trader
+
+## Project
+
 The next-generation open-source AI platform for exchange trading (temporarily distributed under Intellectual Property Reserve License)
 
 1. Highly modular and flexible cross-platform Open Trader UX provides an undistorted trading view with maximum information density for the trader.
 
-2. The Scratcher Assistant is planned as a separate engineering initiative to provide users with modern AI power for tasks not limited to trading, with the ambition to become your open-source AI companion helping with everyday tasks anywhere.
+2. The AI Assistant is planned as a separate engineering initiative to provide users with modern AI power for tasks not limited to trading, with the ambition to become your open-source AI co-pilot helping with everyday tasks anywhere.
 
 3. Universal trading API to run a third-party or implement and run your own automated trading strategy
 
